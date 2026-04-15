@@ -30,6 +30,26 @@ Stop Web:        Ctrl+C in the web terminal
 Stop Docker:     docker compose down   (from c:\git\sk\geo-platform)
 
 
+VIEW DATABASE (TablePlus / DBeaver)
+======================================
+
+geo_meta (metadata, users, layers, etc.)
+  Host:     localhost
+  Port:     5432
+  Database: geo_meta
+  User:     geouser
+  Password: geopassword
+
+geo_features (feature data, partitioned)
+  Host:     localhost
+  Port:     5433
+  Database: geo_features
+  User:     geouser
+  Password: geopassword
+
+Requires docker compose up -d to be running.
+
+
 NOTES
 ======================================
 - Run docker compose up -d BEFORE starting the API.
