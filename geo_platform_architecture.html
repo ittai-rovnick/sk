@@ -1,0 +1,427 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Geo Platform — Architecture & Design</title>
+<style>
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; background: #f8f7f4; color: #1a1a18; line-height: 1.5; }
+  .page { max-width: 1100px; margin: 0 auto; padding: 40px 24px; }
+  h1 { font-size: 28px; font-weight: 600; margin-bottom: 6px; }
+  .subtitle { font-size: 14px; color: #888; margin-bottom: 40px; }
+  h2 { font-size: 13px; font-weight: 600; letter-spacing: .07em; text-transform: uppercase; color: #888; margin-bottom: 14px; margin-top: 36px; }
+  .row { display: flex; gap: 12px; flex-wrap: wrap; margin-bottom: 12px; }
+  .card { border: 1px solid #e0ddd6; border-radius: 10px; overflow: hidden; flex: 1; min-width: 180px; background: #fff; }
+  .card-head { padding: 9px 14px; font-size: 12px; font-weight: 600; border-bottom: 1px solid #f0ede6; }
+  .h-purple { background: #EEEDFE; color: #3C3489; }
+  .h-teal   { background: #E1F5EE; color: #085041; }
+  .h-coral  { background: #FAECE7; color: #712B13; }
+  .h-amber  { background: #FAEEDA; color: #633806; }
+  .h-blue   { background: #E6F1FB; color: #0C447C; }
+  .h-gray   { background: #F1EFE8; color: #444441; }
+  .h-green  { background: #EAF3DE; color: #27500A; }
+  .h-red    { background: #FCEBEB; color: #791F1F; }
+  .card-body { padding: 10px 14px; }
+  .item { font-size: 12px; color: #555; padding: 2px 0; display: flex; align-items: flex-start; gap: 7px; }
+  .dot { width: 5px; height: 5px; border-radius: 50%; flex-shrink: 0; margin-top: 5px; }
+  .dp { background: #7F77DD; } .dt { background: #1D9E75; } .dc { background: #D85A30; }
+  .da { background: #BA7517; } .db { background: #378ADD; } .dg { background: #888780; }
+  .dv { background: #639922; } .dr { background: #E24B4A; }
+  .divider { height: 1px; background: #f0ede6; margin: 7px 0; }
+  .tag { font-size: 9px; font-weight: 600; padding: 1px 6px; border-radius: 4px; margin-left: auto; white-space: nowrap; }
+  .tag-fast { background: #E1F5EE; color: #085041; }
+  .tag-big  { background: #FAECE7; color: #712B13; }
+  .tag-new  { background: #EEEDFE; color: #3C3489; }
+
+  /* FLOW DIAGRAM */
+  .flow { background: #fff; border: 1px solid #e0ddd6; border-radius: 12px; padding: 24px; margin-bottom: 12px; overflow-x: auto; }
+  .flow svg { display: block; min-width: 700px; }
+
+  /* TIER TABLE */
+  table { width: 100%; border-collapse: collapse; font-size: 13px; background: #fff; border-radius: 10px; overflow: hidden; border: 1px solid #e0ddd6; }
+  th { background: #f8f7f4; padding: 10px 16px; text-align: left; font-weight: 600; font-size: 12px; border-bottom: 1px solid #e0ddd6; }
+  td { padding: 10px 16px; border-bottom: 1px solid #f0ede6; vertical-align: top; font-size: 12px; color: #444; }
+  tr:last-child td { border-bottom: none; }
+  .tier-1 { color: #085041; font-weight: 600; }
+  .tier-2 { color: #633806; font-weight: 600; }
+  .tier-3 { color: #712B13; font-weight: 600; }
+
+  /* VERDICT */
+  .verdict { display: flex; gap: 10px; padding: 12px 16px; border-radius: 8px; border: 1px solid #e0ddd6; margin-bottom: 8px; background: #fff; font-size: 12px; color: #555; }
+  .verdict-ok { border-left: 3px solid #1D9E75; }
+  .verdict-warn { border-left: 3px solid #BA7517; }
+  .verdict strong { color: #1a1a18; }
+
+  /* QUERY FLOW */
+  .query-step { display: flex; align-items: center; gap: 0; flex-wrap: wrap; margin-bottom: 8px; }
+  .qbox { padding: 7px 14px; border-radius: 6px; font-size: 12px; font-weight: 500; white-space: nowrap; }
+  .qarrow { padding: 0 8px; color: #aaa; font-size: 16px; }
+  .q-blue { background: #E6F1FB; color: #0C447C; }
+  .q-gray { background: #F1EFE8; color: #444441; }
+  .q-teal { background: #E1F5EE; color: #085041; }
+  .q-coral { background: #FAECE7; color: #712B13; }
+  .q-green { background: #EAF3DE; color: #27500A; }
+  .q-time { font-size: 11px; color: #888; margin-left: 8px; }
+
+  code { font-family: 'Courier New', monospace; font-size: 11px; background: #f8f7f4; padding: 2px 5px; border-radius: 4px; color: #712B13; }
+
+  .section-note { font-size: 12px; color: #888; margin-bottom: 12px; margin-top: -8px; }
+</style>
+</head>
+<body>
+<div class="page">
+
+  <h1>Geo Platform — Architecture & Design</h1>
+  <p class="subtitle">Complete system design · PostgreSQL + PostGIS · FastAPI · React · Microsoft Entra ID</p>
+
+  <!-- TIER STRATEGY -->
+  <h2>Scaling tiers — the core strategy</h2>
+  <p class="section-note">Same code, same schema, same API across all tiers. Only the config changes as you grow.</p>
+  <table>
+    <thead>
+      <tr><th>Tier</th><th>Layer count</th><th>Database setup</th><th>Feature shards</th><th>When to move up</th></tr>
+    </thead>
+    <tbody>
+      <tr>
+        <td class="tier-1">Tier 1</td>
+        <td>0 – 5,000</td>
+        <td>1 metadata DB + 1 features DB (can be same instance)</td>
+        <td>1 shard (shard 0)</td>
+        <td>When total features exceed ~50M rows or query latency exceeds 200ms</td>
+      </tr>
+      <tr>
+        <td class="tier-2">Tier 2</td>
+        <td>5,000 – 50,000</td>
+        <td>Dedicated metadata DB + 2–4 feature shards</td>
+        <td>2–4 shards</td>
+        <td>When a single shard exceeds ~200M rows or CPU stays above 70%</td>
+      </tr>
+      <tr>
+        <td class="tier-3">Tier 3</td>
+        <td>50,000+</td>
+        <td>Metadata DB cluster + 8+ shards + read replica per shard</td>
+        <td>8+ shards</td>
+        <td>Add shards as needed. No ceiling.</td>
+      </tr>
+    </tbody>
+  </table>
+
+  <!-- CLIENTS -->
+  <h2>Clients — who talks to the system</h2>
+  <div class="row">
+    <div class="card">
+      <div class="card-head h-purple">Argo (.NET)</div>
+      <div class="card-body">
+        <div class="item"><span class="dot dp"></span>ArcGIS Maps SDK</div>
+        <div class="item"><span class="dot dp"></span>Online + offline sync</div>
+        <div class="item"><span class="dot dp"></span>Reads features + styles via API</div>
+        <div class="item"><span class="dot dp"></span>Pushes edits when back online</div>
+        <div class="item"><span class="dot dp"></span>7-day offline window</div>
+      </div>
+    </div>
+    <div class="card">
+      <div class="card-head h-purple">ArcGIS Pro</div>
+      <div class="card-body">
+        <div class="item"><span class="dot dp"></span>Direct PostgreSQL connection</div>
+        <div class="item"><span class="dot dp"></span>Also via API for metadata</div>
+        <div class="item"><span class="dot dp"></span>Full edit capabilities</div>
+        <div class="item"><span class="dot dp"></span>Reads .lyrx from S3/MinIO</div>
+      </div>
+    </div>
+    <div class="card">
+      <div class="card-head h-purple">Esri Portal</div>
+      <div class="card-body">
+        <div class="item"><span class="dot dp"></span>OGC Features API endpoint</div>
+        <div class="item"><span class="dot dp"></span>Read + publish layers</div>
+        <div class="item"><span class="dot dp"></span>Tile services</div>
+      </div>
+    </div>
+    <div class="card">
+      <div class="card-head h-purple">Web app (React)</div>
+      <div class="card-body">
+        <div class="item"><span class="dot dp"></span>Manage layers + groups</div>
+        <div class="item"><span class="dot dp"></span>Permissions matrix</div>
+        <div class="item"><span class="dot dp"></span>Audit log viewer</div>
+        <div class="item"><span class="dot dp"></span>Sync conflict resolver</div>
+        <div class="item"><span class="dot dp"></span>Layer health dashboard</div>
+      </div>
+    </div>
+  </div>
+
+  <!-- AUTH -->
+  <h2>Authentication — Microsoft Entra ID (no passwords stored)</h2>
+  <div class="row">
+    <div class="card">
+      <div class="card-head h-blue">Microsoft Entra ID</div>
+      <div class="card-body">
+        <div class="item"><span class="dot db"></span>Every client authenticates here first</div>
+        <div class="item"><span class="dot db"></span>Returns JWT with object_id + groups</div>
+        <div class="item"><span class="dot db"></span>API validates JWT signature — no network call</div>
+        <div class="item"><span class="dot db"></span>Graph API only called for 200+ group users</div>
+      </div>
+    </div>
+    <div class="card">
+      <div class="card-head h-blue">Redis cache</div>
+      <div class="card-body">
+        <div class="item"><span class="dot db"></span>Microsoft group lookups — 5 min TTL</div>
+        <div class="item"><span class="dot db"></span>Permission resolution results — 1 min TTL</div>
+        <div class="item"><span class="dot db"></span>Layer shard routing table — 10 min TTL</div>
+        <div class="item"><span class="dot db"></span>Layer metadata summaries</div>
+      </div>
+    </div>
+    <div class="card">
+      <div class="card-head h-blue">users table (metadata DB)</div>
+      <div class="card-body">
+        <div class="item"><span class="dot db"></span><code>ms_object_id</code> — Microsoft ID</div>
+        <div class="item"><span class="dot db"></span>email, display_name — cached only</div>
+        <div class="item"><span class="dot db"></span>is_superadmin, is_active</div>
+        <div class="item"><span class="dot db"></span>No passwords. Ever.</div>
+      </div>
+    </div>
+  </div>
+
+  <!-- API -->
+  <h2>API layer — FastAPI + shard router</h2>
+  <div class="row">
+    <div class="card">
+      <div class="card-head h-teal">FastAPI endpoints</div>
+      <div class="card-body">
+        <div class="item"><span class="dot dt"></span><code>GET /layers/{id}/features</code></div>
+        <div class="item"><span class="dot dt"></span><code>POST /layers/{id}/features</code></div>
+        <div class="item"><span class="dot dt"></span><code>POST /layers/{id}/lock</code></div>
+        <div class="item"><span class="dot dt"></span><code>GET /layers/{id}/style</code></div>
+        <div class="item"><span class="dot dt"></span><code>POST /sync/snapshot</code></div>
+        <div class="item"><span class="dot dt"></span><code>POST /sync/push</code></div>
+        <div class="item"><span class="dot dt"></span><code>GET /permissions</code></div>
+        <div class="item"><span class="dot dt"></span><code>GET /audit</code></div>
+      </div>
+    </div>
+    <div class="card">
+      <div class="card-head h-teal">Shard router</div>
+      <div class="card-body">
+        <div class="item"><span class="dot dt"></span>Reads <code>layer.shard_id</code> from metadata DB</div>
+        <div class="item"><span class="dot dt"></span>Result cached in Redis — ~0ms overhead</div>
+        <div class="item"><span class="dot dt"></span>Routes query to correct features shard</div>
+        <div class="item"><span class="dot dt"></span>Completely transparent to endpoints</div>
+        <div class="divider"></div>
+        <div class="item"><span class="dot dt"></span>Tier 1: always shard 0 <span class="tag tag-fast">simple</span></div>
+        <div class="item"><span class="dot dt"></span>Tier 2: 2–4 shards</div>
+        <div class="item"><span class="dot dt"></span>Tier 3: 8+ shards <span class="tag tag-new">scale</span></div>
+      </div>
+    </div>
+    <div class="card">
+      <div class="card-head h-teal">PgBouncer (per shard)</div>
+      <div class="card-body">
+        <div class="item"><span class="dot dt"></span>Sits between API and every DB</div>
+        <div class="item"><span class="dot dt"></span>500 API connections in</div>
+        <div class="item"><span class="dot dt"></span>→ 25 real DB connections out</div>
+        <div class="item"><span class="dot dt"></span>Queues overflow requests</div>
+        <div class="item"><span class="dot dt"></span>Prevents DB saturation</div>
+      </div>
+    </div>
+  </div>
+
+  <!-- DATABASES -->
+  <h2>Databases — metadata separate from features</h2>
+  <div class="row">
+    <div class="card">
+      <div class="card-head h-gray">Metadata DB <span style="font-size:10px;opacity:.7">(always one, always small)</span></div>
+      <div class="card-body">
+        <div class="item"><span class="dot dg"></span>users + ms_groups <span class="tag tag-fast">tiny</span></div>
+        <div class="item"><span class="dot dg"></span>roles + permissions</div>
+        <div class="item"><span class="dot dg"></span>databases + group_layers</div>
+        <div class="item"><span class="dot dg"></span>layers (metadata only + shard_id)</div>
+        <div class="item"><span class="dot dg"></span>layer_styles + layer_schema</div>
+        <div class="item"><span class="dot dg"></span>layer_owners</div>
+        <div class="item"><span class="dot dg"></span>raster_catalog</div>
+        <div class="item"><span class="dot dg"></span>audit_log + layer_events</div>
+        <div class="item"><span class="dot dg"></span>sync_snapshots + sync_conflicts</div>
+        <div class="item"><span class="dot dg"></span>failed_syncs + group_quotas</div>
+      </div>
+    </div>
+    <div class="card">
+      <div class="card-head h-coral">Features Shard(s) <span style="font-size:10px;opacity:.7">(1 in Tier 1, grows with you)</span></div>
+      <div class="card-body">
+        <div class="item"><span class="dot dc"></span>features table <span class="tag tag-big">all the data</span></div>
+        <div class="item"><span class="dot dc"></span><code>PARTITION BY HASH(layer_id)</code></div>
+        <div class="item"><span class="dot dc"></span>32 hash partitions per shard</div>
+        <div class="item"><span class="dot dc"></span>GIST index on geom</div>
+        <div class="item"><span class="dot dc"></span>GIN index on properties (JSONB)</div>
+        <div class="item"><span class="dot dc"></span>B-tree on layer_id + updated_at</div>
+        <div class="divider"></div>
+        <div class="item"><span class="dot dc"></span>ST_IsValid check on every insert</div>
+        <div class="item"><span class="dot dc"></span>ST_MakeValid trigger (auto-repair)</div>
+        <div class="item"><span class="dot dc"></span>version INT for optimistic locking</div>
+        <div class="item"><span class="dot dc"></span>deleted_at for soft deletes</div>
+      </div>
+    </div>
+    <div class="card">
+      <div class="card-head h-amber">Object storage (MinIO locally → S3/Azure)</div>
+      <div class="card-body">
+        <div class="item"><span class="dot da"></span><strong>styles/</strong> — .lyrx originals, thumbnails</div>
+        <div class="item"><span class="dot da"></span><strong>rasters/</strong> — COG GeoTIFFs, MBTiles</div>
+        <div class="item"><span class="dot da"></span><strong>exports/</strong> — GPKG, GeoJSON, .tpkx</div>
+        <div class="divider"></div>
+        <div class="item"><span class="dot da"></span>Paths stored in PostgreSQL</div>
+        <div class="item"><span class="dot da"></span>Signed URLs expire after 1hr</div>
+        <div class="item"><span class="dot da"></span>Never queried directly by apps</div>
+      </div>
+    </div>
+  </div>
+
+  <!-- HOW A QUERY FLOWS -->
+  <h2>How a feature query flows through the system</h2>
+  <div class="flow">
+    <p style="font-size:12px;color:#888;margin-bottom:16px">Example: Argo requests all features in a bounding box for layer X</p>
+
+    <div class="query-step">
+      <div class="qbox q-blue">1. Argo sends GET /layers/{id}/features?bbox=…</div>
+      <div class="qarrow">→</div>
+      <div class="qbox q-gray">JWT validated (no network call)</div>
+      <div class="q-time">~0ms</div>
+    </div>
+    <div class="query-step">
+      <div class="qbox q-teal">2. Check permissions in metadata DB</div>
+      <div class="qarrow">→</div>
+      <div class="qbox q-gray">can_user_do(user_id, layer_id, 'read')</div>
+      <div class="q-time">~2ms (cached in Redis)</div>
+    </div>
+    <div class="query-step">
+      <div class="qbox q-teal">3. Get shard_id from layer metadata</div>
+      <div class="qarrow">→</div>
+      <div class="qbox q-gray">layer.shard_id = 2</div>
+      <div class="q-time">~1ms (cached in Redis)</div>
+    </div>
+    <div class="query-step">
+      <div class="qbox q-coral">4. Route to features shard 2</div>
+      <div class="qarrow">→</div>
+      <div class="qbox q-gray">SELECT * FROM features WHERE layer_id=X AND ST_Intersects(geom, bbox)</div>
+      <div class="q-time">~10–50ms (GIST index)</div>
+    </div>
+    <div class="query-step">
+      <div class="qbox q-green">5. Return features to Argo</div>
+      <div class="qarrow">→</div>
+      <div class="qbox q-gray">GeoJSON response</div>
+      <div class="q-time">Total: ~15–55ms</div>
+    </div>
+  </div>
+
+  <!-- PERMISSION FLOW -->
+  <h2>How permissions are checked (every write request)</h2>
+  <div class="flow">
+    <p style="font-size:12px;color:#888;margin-bottom:16px">Example: Argo tries to edit a feature on layer X</p>
+
+    <div class="query-step">
+      <div class="qbox q-blue">Extract ms_object_id + ms_group_ids from JWT</div>
+      <div class="q-time">~0ms</div>
+    </div>
+    <div class="query-step">
+      <div class="qbox q-teal">Check layer.is_locked</div>
+      <div class="qarrow">→</div>
+      <div class="qbox q-gray">If locked → 423 Locked. Stop.</div>
+      <div class="q-time">~1ms</div>
+    </div>
+    <div class="query-step">
+      <div class="qbox q-teal">Resolve permissions (deny wins)</div>
+      <div class="qarrow">→</div>
+      <div class="qbox q-gray">Check layer → group_layer → database level</div>
+      <div class="q-time">~2ms</div>
+    </div>
+    <div class="query-step">
+      <div class="qbox q-teal">Check optimistic lock version</div>
+      <div class="qarrow">→</div>
+      <div class="qbox q-gray">If version mismatch → 409 Conflict → sync_conflicts table</div>
+      <div class="q-time">~1ms</div>
+    </div>
+    <div class="query-step">
+      <div class="qbox q-coral">Write to features shard</div>
+      <div class="qarrow">→</div>
+      <div class="qbox q-gray">UPDATE features SET … WHERE id=X AND version=N</div>
+      <div class="q-time">~5–20ms</div>
+    </div>
+    <div class="query-step">
+      <div class="qbox q-green">Write to audit_log</div>
+      <div class="qarrow">→</div>
+      <div class="qbox q-gray">Async — does not block response</div>
+      <div class="q-time">~0ms (non-blocking)</div>
+    </div>
+  </div>
+
+  <!-- VERDICTS -->
+  <h2>Will it work well?</h2>
+
+  <div class="verdict verdict-ok">
+    <strong>✓ Metadata DB stays fast no matter how big features grow.</strong>&nbsp;
+    Every permission check, layer list, and dashboard load hits only the tiny metadata DB. Feature shards never slow down metadata operations.
+  </div>
+  <div class="verdict verdict-ok">
+    <strong>✓ Feature queries never slow down as you add more layers.</strong>&nbsp;
+    Every query includes layer_id, so PostgreSQL hits exactly one of 32 partitions. Adding 10,000 more layers doesn't affect query time for existing layers.
+  </div>
+  <div class="verdict verdict-ok">
+    <strong>✓ Scaling from Tier 1 to Tier 3 requires zero code changes.</strong>&nbsp;
+    You add shards to the config file and run a migration script that moves data. The API routing logic never changes.
+  </div>
+  <div class="verdict verdict-ok">
+    <strong>✓ Argo offline sync is isolated per shard.</strong>&nbsp;
+    Argo's selected layers live on known shards. Syncing doesn't affect other shards or other users.
+  </div>
+  <div class="verdict verdict-ok">
+    <strong>✓ Mixed layer sizes (5 rows to 500,000 rows) are handled identically.</strong>&nbsp;
+    A 5-row layer is just 5 rows in one partition. A 500,000-row layer is 500,000 rows in one partition. Same indexes, same queries, same speed.
+  </div>
+  <div class="verdict verdict-warn">
+    <strong>! One known risk: metadata DB is a single point of failure.</strong>&nbsp;
+    If it goes down, everything stops. Mitigate in production with a hot standby replica. Not needed for local development.
+  </div>
+
+  <!-- LOCAL DEV -->
+  <h2>Local development setup (Windows + Docker)</h2>
+  <div class="row">
+    <div class="card">
+      <div class="card-head h-green">docker-compose services</div>
+      <div class="card-body">
+        <div class="item"><span class="dot dv"></span><code>postgres_meta</code> → port 5432</div>
+        <div class="item"><span class="dot dv"></span><code>postgres_features</code> → port 5433</div>
+        <div class="item"><span class="dot dv"></span><code>pgbouncer</code> → port 6432</div>
+        <div class="item"><span class="dot dv"></span><code>redis</code> → port 6379</div>
+        <div class="item"><span class="dot dv"></span><code>minio</code> → port 9000 / 9001</div>
+        <div class="divider"></div>
+        <div class="item"><span class="dot dv"></span>One command: <code>docker compose up -d</code></div>
+      </div>
+    </div>
+    <div class="card">
+      <div class="card-head h-green">API (FastAPI)</div>
+      <div class="card-body">
+        <div class="item"><span class="dot dv"></span><code>cd api && uvicorn app.main:app --reload</code></div>
+        <div class="item"><span class="dot dv"></span>Runs on port 8000</div>
+        <div class="item"><span class="dot dv"></span>Auto-docs at /docs</div>
+        <div class="item"><span class="dot dv"></span>Auto-reloads on file save</div>
+      </div>
+    </div>
+    <div class="card">
+      <div class="card-head h-green">Web app (React)</div>
+      <div class="card-body">
+        <div class="item"><span class="dot dv"></span><code>cd web && npm run dev</code></div>
+        <div class="item"><span class="dot dv"></span>Runs on port 5173</div>
+        <div class="item"><span class="dot dv"></span>Hot reload on file save</div>
+        <div class="item"><span class="dot dv"></span>Proxies API calls to port 8000</div>
+      </div>
+    </div>
+    <div class="card">
+      <div class="card-head h-green">Database migrations (Alembic)</div>
+      <div class="card-body">
+        <div class="item"><span class="dot dv"></span><code>alembic upgrade head</code></div>
+        <div class="item"><span class="dot dv"></span>Creates all tables + indexes</div>
+        <div class="item"><span class="dot dv"></span>Seeds built-in roles</div>
+        <div class="item"><span class="dot dv"></span>Run once on first setup</div>
+      </div>
+    </div>
+  </div>
+
+  <p style="font-size:11px;color:#aaa;margin-top:40px;text-align:center">Geo Platform Architecture · Designed with Claude · Generated for implementation</p>
+
+</div>
+</body>
+</html>
