@@ -1,7 +1,7 @@
 import uuid
 from datetime import datetime
 from sqlalchemy import BigInteger, DateTime, ForeignKey, String, Text, func
-from sqlalchemy.dialects.postgresql import UUID, INET
+from sqlalchemy.dialects.postgresql import UUID, INET, JSONB
 from sqlalchemy.orm import Mapped, mapped_column
 from app.db.base import Base
 
@@ -17,8 +17,8 @@ class AuditLog(Base):
     action: Mapped[str] = mapped_column(String, nullable=False)
     resource_type: Mapped[str] = mapped_column(String, nullable=False)
     resource_id: Mapped[str] = mapped_column(String, nullable=False)
-    old_value: Mapped[dict | None] = mapped_column(nullable=True)
-    new_value: Mapped[dict | None] = mapped_column(nullable=True)
+    old_value: Mapped[dict | None] = mapped_column(JSONB, nullable=True)
+    new_value: Mapped[dict | None] = mapped_column(JSONB, nullable=True)
     ip_address: Mapped[str | None] = mapped_column(INET)
     error_message: Mapped[str | None] = mapped_column(Text)
     created_at: Mapped[datetime] = mapped_column(
@@ -37,7 +37,7 @@ class LayerEvent(Base):
         UUID(as_uuid=True), ForeignKey("users.id")
     )
     event_type: Mapped[str] = mapped_column(String, nullable=False)
-    payload: Mapped[dict | None] = mapped_column(nullable=True)
+    payload: Mapped[dict | None] = mapped_column(JSONB, nullable=True)
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), nullable=False, server_default=func.now()
     )
@@ -77,7 +77,7 @@ class SyncConflict(Base):
         UUID(as_uuid=True), ForeignKey("users.id"), nullable=False
     )
     device_id: Mapped[str] = mapped_column(String, nullable=False)
-    client_payload: Mapped[dict] = mapped_column(nullable=False)
+    client_payload: Mapped[dict] = mapped_column(JSONB, nullable=False)
     server_version: Mapped[int] = mapped_column(nullable=False)
     client_version: Mapped[int] = mapped_column(nullable=False)
     resolution: Mapped[str] = mapped_column(String, default="pending")
@@ -103,7 +103,7 @@ class FailedSync(Base):
         UUID(as_uuid=True), ForeignKey("layers.id")
     )
     device_id: Mapped[str | None] = mapped_column(String)
-    payload: Mapped[dict] = mapped_column(nullable=False)
+    payload: Mapped[dict] = mapped_column(JSONB, nullable=False)
     error_code: Mapped[str] = mapped_column(String, nullable=False)
     error_message: Mapped[str] = mapped_column(String, nullable=False)
     retried_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))

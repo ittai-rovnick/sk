@@ -7,7 +7,7 @@
 import uuid
 from datetime import datetime
 from sqlalchemy import BigInteger, DateTime, Integer, String, Text, func
-from sqlalchemy.dialects.postgresql import UUID
+from sqlalchemy.dialects.postgresql import UUID, JSONB
 from sqlalchemy.orm import Mapped, mapped_column
 from geoalchemy2 import Geometry
 from app.db.base import Base
@@ -19,7 +19,7 @@ class Feature(Base):
     id: Mapped[int] = mapped_column(BigInteger, primary_key=True)
     layer_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), nullable=False, primary_key=True)
     geom: Mapped[None] = mapped_column(Geometry("GEOMETRY"), nullable=False)
-    properties: Mapped[dict] = mapped_column(nullable=False, default=dict)
+    properties: Mapped[dict] = mapped_column(JSONB, nullable=False, default=dict)
     version: Mapped[int] = mapped_column(Integer, nullable=False, default=1)
     created_by: Mapped[str | None] = mapped_column(String)
     updated_by: Mapped[str | None] = mapped_column(String)

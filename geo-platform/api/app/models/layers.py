@@ -3,7 +3,7 @@ from datetime import datetime
 from sqlalchemy import (
     Boolean, DateTime, ForeignKey, Integer, String, ARRAY, Text, func
 )
-from sqlalchemy.dialects.postgresql import UUID
+from sqlalchemy.dialects.postgresql import UUID, JSONB
 from sqlalchemy.orm import Mapped, mapped_column
 from geoalchemy2 import Geometry
 from app.db.base import Base
@@ -102,7 +102,7 @@ class LayerSchema(Base):
     layer_id: Mapped[uuid.UUID] = mapped_column(
         UUID(as_uuid=True), ForeignKey("layers.id", ondelete="CASCADE"), nullable=False, unique=True
     )
-    json_schema: Mapped[dict] = mapped_column(nullable=False, default=dict)
+    json_schema: Mapped[dict] = mapped_column(JSONB, nullable=False, default=dict)
     schema_version: Mapped[int] = mapped_column(Integer, nullable=False, default=1)
     updated_by: Mapped[uuid.UUID | None] = mapped_column(
         UUID(as_uuid=True), ForeignKey("users.id")

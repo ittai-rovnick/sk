@@ -1,3 +1,10 @@
+import asyncio
+import sys
+
+# psycopg3 async requires SelectorEventLoop on Windows (uvicorn uses ProactorEventLoop by default)
+if sys.platform == "win32":
+    asyncio.set_event_loop_policy(asyncio.WindowsSelectorEventLoopPolicy())
+
 from contextlib import asynccontextmanager
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware

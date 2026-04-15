@@ -10,3 +10,5 @@ dist/
 .pytest_cache/
 alembic/versions/*.py
 !alembic/versions/.gitkeep
+!alembic/versions/001_initial_schema.py
+!alembic/versions/001_features_schema.py

@@ -1,0 +1,42 @@
+GEO PLATFORM — START / STOP COMMANDS
+======================================
+
+All commands assume your terminal starts at:  c:\git\sk\geo-platform
+
+
+1. START DOCKER (postgres_meta, postgres_features, pgbouncer, redis, minio)
+   docker compose up -d
+
+2. START API
+   cd c:\git\sk\geo-platform\api
+   venv\Scripts\python run.py
+
+   Verify it works:
+   http://localhost:8000/health   → {"status":"ok","db":"ok"}
+   http://localhost:8000/docs     → Swagger UI
+
+3. START WEB (separate terminal)
+   cd c:\git\sk\geo-platform\web
+   npm run dev
+
+   Open: http://localhost:5173
+
+
+STOP
+======================================
+
+Stop API:        Ctrl+C in the API terminal
+Stop Web:        Ctrl+C in the web terminal
+Stop Docker:     docker compose down   (from c:\git\sk\geo-platform)
+
+
+NOTES
+======================================
+- Run docker compose up -d BEFORE starting the API.
+- If /health returns port 6432 errors, a stale META_DB_URL env var may be set.
+  Fix (run in the API terminal before starting):
+  set META_DB_URL=postgresql+psycopg://geouser:geopassword@localhost:5432/geo_meta
+- Migrations (only needed once, or after schema changes):
+  cd c:\git\sk\geo-platform\api
+  venv\Scripts\alembic -x db=meta upgrade meta@head
+  venv\Scripts\alembic -x db=features upgrade features@head

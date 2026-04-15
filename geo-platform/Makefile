@@ -10,13 +10,14 @@ logs:
 	docker compose logs -f
 
 migrate:
-	cd api && alembic upgrade head
+	cd api && venv/Scripts/alembic -x db=meta upgrade meta@head
+	cd api && venv/Scripts/alembic -x db=features upgrade features@head
 
 seed:
 	cd api && py -m app.seed
 
 api:
-	cd api && uvicorn app.main:app --reload --port 8000
+	cd api && venv/Scripts/py run.py
 
 web:
 	cd web && npm run dev

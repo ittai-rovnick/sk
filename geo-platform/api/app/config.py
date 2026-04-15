@@ -9,7 +9,8 @@ class Settings(BaseSettings):
     ms_client_secret: str
 
     # Databases
-    meta_db_url: str
+    meta_db_url: str                      # via pgbouncer — API runtime
+    meta_db_direct_url: str               # direct — Alembic migrations only
     features_shard_count: int = 1
     features_shard_0_url: str
 

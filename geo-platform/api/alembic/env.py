@@ -1,4 +1,6 @@
 import asyncio
+import sys
+import selectors
 from logging.config import fileConfig
 
 from sqlalchemy import pool
@@ -28,7 +30,8 @@ _db_target = context.get_x_argument(as_dictionary=True).get("db", "meta")
 if _db_target == "features":
     _url = settings.features_shard_0_url
 else:
-    _url = settings.meta_db_url
+    # Use direct connection for migrations — bypasses pgbouncer
+    _url = settings.meta_db_direct_url
 
 
 def run_migrations_offline() -> None:
@@ -62,7 +65,17 @@ async def run_async_migrations() -> None:
 
 
 def run_migrations_online() -> None:
-    asyncio.run(run_async_migrations())
+    # psycopg3 async requires SelectorEventLoop on Windows (not ProactorEventLoop)
+    if sys.platform == "win32":
+        asyncio.set_event_loop_policy(
+            asyncio.DefaultEventLoopPolicy()
+        )
+        loop = asyncio.SelectorEventLoop(selectors.SelectSelector())
+        asyncio.set_event_loop(loop)
+        loop.run_until_complete(run_async_migrations())
+        loop.close()
+    else:
+        asyncio.run(run_async_migrations())
 
 
 if context.is_offline_mode():
