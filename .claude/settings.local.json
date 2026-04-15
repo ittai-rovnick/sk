@@ -1,0 +1,10 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(git --version)",
+      "Bash(docker --version)",
+      "Bash(docker compose *)",
+      "Bash(code --version)"
+    ]
+  }
+}

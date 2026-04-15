@@ -1,0 +1,91 @@
+services:
+
+  postgres_meta:
+    image: postgis/postgis:16-3.4
+    container_name: geo_meta
+    environment:
+      POSTGRES_DB: geo_meta
+      POSTGRES_USER: geouser
+      POSTGRES_PASSWORD: geopassword
+    ports:
+      - "5432:5432"
+    volumes:
+      - meta_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U geouser -d geo_meta"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  postgres_features:
+    image: postgis/postgis:16-3.4
+    container_name: geo_features
+    environment:
+      POSTGRES_DB: geo_features
+      POSTGRES_USER: geouser
+      POSTGRES_PASSWORD: geopassword
+    ports:
+      - "5433:5432"
+    volumes:
+      - features_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U geouser -d geo_features"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  pgbouncer:
+    image: bitnami/pgbouncer:latest
+    container_name: geo_pgbouncer
+    environment:
+      POSTGRESQL_HOST: postgres_meta
+      POSTGRESQL_PORT: 5432
+      POSTGRESQL_DATABASE: geo_meta
+      POSTGRESQL_USERNAME: geouser
+      POSTGRESQL_PASSWORD: geopassword
+      PGBOUNCER_POOL_MODE: transaction
+      PGBOUNCER_MAX_CLIENT_CONN: 500
+      PGBOUNCER_DEFAULT_POOL_SIZE: 25
+      PGBOUNCER_MIN_POOL_SIZE: 5
+    ports:
+      - "6432:6432"
+    depends_on:
+      postgres_meta:
+        condition: service_healthy
+
+  redis:
+    image: redis:7-alpine
+    container_name: geo_redis
+    ports:
+      - "6379:6379"
+    volumes:
+      - redis_data:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  minio:
+    image: minio/minio
+    container_name: geo_minio
+    command: server /data --console-address ":9001"
+    environment:
+      MINIO_ROOT_USER: minioadmin
+      MINIO_ROOT_PASSWORD: minioadmin
+    ports:
+      - "9000:9000"
+      - "9001:9001"
+    volumes:
+      - minio_data:/data
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:9000/minio/health/live"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+volumes:
+  meta_data:
+  features_data:
+  redis_data:
+  minio_data:
