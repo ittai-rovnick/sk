@@ -5,7 +5,7 @@ from pydantic import BaseModel, EmailStr
 
 class UserResponse(BaseModel):
     id: uuid.UUID
-    ms_object_id: str
+    ms_object_id: str | None
     email: str
     display_name: str | None
     is_superadmin: bool
