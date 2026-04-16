@@ -1,4 +1,4 @@
-import { Table, Tag, Space } from "antd";
+import { Table, Tag } from "antd";
 import type { Permission, Role } from "../../types";
 
 interface Props {

@@ -1,10 +1,2 @@
-import { MsalProvider } from "@azure/msal-react";
-import { msalInstance } from "./msalConfig";
-
-interface Props {
-  children: React.ReactNode;
-}
-
-export function AuthProvider({ children }: Props) {
-  return <MsalProvider instance={msalInstance}>{children}</MsalProvider>;
-}
+// Re-exported from AuthContext — kept for backwards compat with existing imports
+export { AuthProvider } from "./AuthContext";

@@ -1,11 +1,18 @@
 import { Layout, Button, Space, Typography, Avatar } from "antd";
 import { LogoutOutlined, UserOutlined } from "@ant-design/icons";
-import { useAuth } from "../../auth/useAuth";
+import { useNavigate } from "react-router-dom";
+import { useAuth } from "../../auth/AuthContext";
 
 const { Header } = Layout;
 
 export function TopBar() {
-  const { account, logout } = useAuth();
+  const { user, logout } = useAuth();
+  const navigate = useNavigate();
+
+  function handleLogout() {
+    logout();
+    navigate("/login", { replace: true });
+  }
 
   return (
     <Header
@@ -24,13 +31,13 @@ export function TopBar() {
       <Space>
         <Avatar icon={<UserOutlined />} />
         <Typography.Text style={{ color: "#fff" }}>
-          {account?.name ?? account?.username}
+          {user?.display_name ?? user?.email}
         </Typography.Text>
         <Button
           type="text"
           icon={<LogoutOutlined />}
           style={{ color: "#fff" }}
-          onClick={logout}
+          onClick={handleLogout}
         >
           Sign out
         </Button>

@@ -1,109 +1,234 @@
-import { useState } from "react";
-import { Select, Typography, Space, Drawer, Button, Empty } from "antd";
-import { PlusOutlined } from "@ant-design/icons";
-import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
-import { databases as dbApi } from "../api/databases";
-import { groupLayers as glApi, layers as layerApi } from "../api/layers";
-import { LayerTree } from "../components/layers/LayerTree";
-import { LayerForm } from "../components/layers/LayerForm";
-import { LockButton } from "../components/layers/LockButton";
-import { LoadingSpinner } from "../components/shared/LoadingSpinner";
-import type { Layer } from "../types";
-import { useNavigate } from "react-router-dom";
+import { useState, useEffect } from "react";
+import { useNavigate, useSearchParams } from "react-router-dom";
+import {
+  Select, Typography, Space, Button, Table, Tag, Modal, Form,
+  Input, message, Tooltip, Badge,
+} from "antd";
+import {
+  PlusOutlined, EyeOutlined, LockOutlined, UnlockOutlined, DeleteOutlined,
+} from "@ant-design/icons";
+import client from "../api/client";
+import type { GeoDatabase, Layer } from "../types";
+
+const GEOMETRY_TYPES = ["Point", "LineString", "Polygon", "MultiPoint", "MultiLineString", "MultiPolygon"];
+const STATUS_COLOR: Record<string, string> = { draft: "default", review: "orange", published: "green" };
+const HEALTH_COLOR: Record<string, string> = { ok: "success", stale: "warning", error: "error", syncing: "processing" };
 
 export function LayersPage() {
-  const qc = useQueryClient();
   const navigate = useNavigate();
-  const [dbId, setDbId] = useState<string | null>(null);
-  const [drawerOpen, setDrawerOpen] = useState(false);
-  const [selectedLayer, setSelectedLayer] = useState<Layer | null>(null);
+  const [searchParams, setSearchParams] = useSearchParams();
+  const dbId = searchParams.get("database_id") ?? "";
 
-  const { data: dbs } = useQuery({ queryKey: ["databases"], queryFn: dbApi.list });
+  const [databases, setDatabases] = useState<GeoDatabase[]>([]);
+  const [layers, setLayers] = useState<Layer[]>([]);
+  const [loadingLayers, setLoadingLayers] = useState(false);
+  const [createOpen, setCreateOpen] = useState(false);
+  const [editLayer, setEditLayer] = useState<Layer | null>(null);
+  const [saving, setSaving] = useState(false);
+  const [form] = Form.useForm();
 
-  const { data: gls, isLoading: glLoading } = useQuery({
-    queryKey: ["group-layers", dbId],
-    queryFn: () => glApi.tree(dbId!),
-    enabled: !!dbId,
-  });
+  useEffect(() => {
+    client.get<GeoDatabase[]>("/databases").then((r) => setDatabases(r.data));
+  }, []);
 
-  const { data: ls, isLoading: layerLoading } = useQuery({
-    queryKey: ["layers", dbId],
-    queryFn: () => layerApi.list(dbId!),
-    enabled: !!dbId,
-  });
+  useEffect(() => {
+    if (!dbId) return;
+    setLoadingLayers(true);
+    client.get<Layer[]>(`/layers?database_id=${dbId}`)
+      .then((r) => setLayers(r.data))
+      .finally(() => setLoadingLayers(false));
+  }, [dbId]);
 
-  const create = useMutation({
-    mutationFn: (vals: Partial<Layer>) =>
-      layerApi.create({ ...vals, database_id: dbId! }),
-    onSuccess: () => {
-      qc.invalidateQueries({ queryKey: ["layers", dbId] });
-      setDrawerOpen(false);
+  async function onCreate(values: Record<string, unknown>) {
+    setSaving(true);
+    try {
+      await client.post("/layers", { ...values, database_id: dbId, srid: 4326 });
+      message.success("Layer created");
+      setCreateOpen(false);
+      form.resetFields();
+      refreshLayers();
+    } catch {
+      message.error("Failed to create layer");
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  async function onEdit(values: Record<string, unknown>) {
+    if (!editLayer) return;
+    setSaving(true);
+    try {
+      await client.put(`/layers/${editLayer.id}`, values);
+      message.success("Layer updated");
+      setEditLayer(null);
+      refreshLayers();
+    } catch {
+      message.error("Failed to update layer");
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  async function onDelete(layer: Layer) {
+    try {
+      await client.delete(`/layers/${layer.id}`);
+      message.success("Layer deleted");
+      refreshLayers();
+    } catch {
+      message.error("Failed to delete layer");
+    }
+  }
+
+  async function onToggleLock(layer: Layer) {
+    try {
+      if (layer.is_locked) {
+        await client.delete(`/layers/${layer.id}/lock`);
+        message.success("Layer unlocked");
+      } else {
+        await client.post(`/layers/${layer.id}/lock`, { reason: "Locked via UI" });
+        message.success("Layer locked");
+      }
+      refreshLayers();
+    } catch {
+      message.error("Failed to toggle lock");
+    }
+  }
+
+  function refreshLayers() {
+    if (!dbId) return;
+    client.get<Layer[]>(`/layers?database_id=${dbId}`).then((r) => setLayers(r.data));
+  }
+
+  function openEdit(layer: Layer) {
+    setEditLayer(layer);
+    form.setFieldsValue({
+      name: layer.name,
+      description: layer.description,
+      geometry_type: layer.geometry_type,
+      tags: layer.tags,
+    });
+  }
+
+  const columns = [
+    {
+      title: "Name",
+      dataIndex: "name",
+      key: "name",
+      render: (name: string, row: Layer) => (
+        <Space>
+          {row.is_locked && <LockOutlined style={{ color: "#faad14" }} />}
+          <Typography.Text strong>{name}</Typography.Text>
+        </Space>
+      ),
     },
-  });
+    { title: "Geometry", dataIndex: "geometry_type", key: "geometry_type", width: 130 },
+    {
+      title: "Status",
+      dataIndex: "status",
+      key: "status",
+      width: 100,
+      render: (s: string) => <Tag color={STATUS_COLOR[s]}>{s}</Tag>,
+    },
+    {
+      title: "Health",
+      dataIndex: "health",
+      key: "health",
+      width: 100,
+      render: (h: string) => <Badge status={HEALTH_COLOR[h] as never} text={h} />,
+    },
+    {
+      title: "Updated",
+      dataIndex: "updated_at",
+      key: "updated_at",
+      width: 120,
+      render: (v: string) => new Date(v).toLocaleDateString(),
+    },
+    {
+      title: "",
+      key: "actions",
+      width: 150,
+      render: (_: unknown, row: Layer) => (
+        <Space>
+          <Tooltip title="View map">
+            <Button icon={<EyeOutlined />} size="small" onClick={() => navigate(`/layers/${row.id}`)} />
+          </Tooltip>
+          <Tooltip title={row.is_locked ? "Unlock" : "Lock"}>
+            <Button
+              icon={row.is_locked ? <UnlockOutlined /> : <LockOutlined />}
+              size="small"
+              onClick={() => onToggleLock(row)}
+            />
+          </Tooltip>
+          <Tooltip title="Edit">
+            <Button size="small" onClick={() => openEdit(row)}>Edit</Button>
+          </Tooltip>
+          <Tooltip title="Delete">
+            <Button
+              icon={<DeleteOutlined />}
+              size="small"
+              danger
+              onClick={() => Modal.confirm({
+                title: `Delete "${row.name}"?`,
+                onOk: () => onDelete(row),
+              })}
+            />
+          </Tooltip>
+        </Space>
+      ),
+    },
+  ];
 
-  const lock = useMutation({
-    mutationFn: ({ id, reason }: { id: string; reason: string }) =>
-      layerApi.lock(id, reason),
-    onSuccess: () => qc.invalidateQueries({ queryKey: ["layers", dbId] }),
-  });
-
-  const unlock = useMutation({
-    mutationFn: (id: string) => layerApi.unlock(id),
-    onSuccess: () => qc.invalidateQueries({ queryKey: ["layers", dbId] }),
-  });
+  const isEditing = !!editLayer;
 
   return (
     <>
-      <Space style={{ marginBottom: 16 }}>
-        <Typography.Title level={4} style={{ margin: 0 }}>
-          Layers
-        </Typography.Title>
+      <Space style={{ marginBottom: 16 }} wrap>
+        <Typography.Title level={4} style={{ margin: 0 }}>Layers</Typography.Title>
         <Select
           placeholder="Select database"
           style={{ width: 240 }}
-          options={(dbs ?? []).map((d) => ({ value: d.id, label: d.name }))}
-          onChange={setDbId}
+          value={dbId || undefined}
+          options={databases.map((d) => ({ value: d.id, label: d.name }))}
+          onChange={(v) => setSearchParams({ database_id: v })}
         />
         {dbId && (
-          <Button icon={<PlusOutlined />} type="primary" onClick={() => setDrawerOpen(true)}>
+          <Button icon={<PlusOutlined />} type="primary" onClick={() => { form.resetFields(); setCreateOpen(true); }}>
             New layer
           </Button>
         )}
       </Space>
 
-      {!dbId && <Empty description="Select a database to see its layers" />}
-
-      {dbId && (glLoading || layerLoading) && <LoadingSpinner />}
-
-      {dbId && !glLoading && !layerLoading && (
-        <Space direction="vertical" style={{ width: "100%" }}>
-          <LayerTree
-            groupLayers={gls ?? []}
-            layers={ls ?? []}
-            onSelectLayer={(layer) => navigate(`/layers/${layer.id}`)}
-          />
-          {selectedLayer && (
-            <LockButton
-              layer={selectedLayer}
-              onLock={(reason) => lock.mutateAsync({ id: selectedLayer.id, reason })}
-              onUnlock={() => unlock.mutateAsync(selectedLayer.id)}
-            />
-          )}
-        </Space>
+      {!dbId ? (
+        <Typography.Text type="secondary">Select a database to see its layers.</Typography.Text>
+      ) : (
+        <Table rowKey="id" dataSource={layers} columns={columns} loading={loadingLayers} />
       )}
 
-      <Drawer
-        title="New layer"
-        open={drawerOpen}
-        onClose={() => setDrawerOpen(false)}
-        width={480}
+      {/* Create / Edit modal */}
+      <Modal
+        title={isEditing ? `Edit "${editLayer?.name}"` : "New layer"}
+        open={createOpen || isEditing}
+        onOk={form.submit}
+        onCancel={() => { setCreateOpen(false); setEditLayer(null); form.resetFields(); }}
+        confirmLoading={saving}
       >
-        <LayerForm
-          onSubmit={(vals) => create.mutate(vals)}
-          onCancel={() => setDrawerOpen(false)}
-          loading={create.isPending}
-        />
-      </Drawer>
+        <Form form={form} layout="vertical" onFinish={isEditing ? onEdit : onCreate}>
+          <Form.Item name="name" label="Name" rules={[{ required: true }]}>
+            <Input />
+          </Form.Item>
+          <Form.Item name="description" label="Description">
+            <Input.TextArea rows={2} />
+          </Form.Item>
+          {!isEditing && (
+            <Form.Item name="geometry_type" label="Geometry type" rules={[{ required: true }]}>
+              <Select options={GEOMETRY_TYPES.map((t) => ({ value: t, label: t }))} />
+            </Form.Item>
+          )}
+          <Form.Item name="tags" label="Tags">
+            <Select mode="tags" placeholder="Press enter to add tags" />
+          </Form.Item>
+        </Form>
+      </Modal>
     </>
   );
 }
