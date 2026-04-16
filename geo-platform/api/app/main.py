@@ -30,24 +30,35 @@ from app.routers import (
 
 
 async def _ensure_dev_user() -> None:
-    """Create a superadmin dev user if DEV_MODE is on and the user doesn't exist yet."""
+    """Create seed superadmin users if they don't exist yet."""
     import uuid
     from sqlalchemy import select
+
+    seed_users = [
+        dict(
+            id=uuid.UUID("00000000-0000-0000-0000-000000000001"),
+            email="dev@localhost",
+            display_name="Dev Superadmin",
+        ),
+        dict(
+            id=uuid.UUID("00000000-0000-0000-0000-000000000002"),
+            email="ittai@rovnick.com",
+            display_name="Ittai",
+        ),
+    ]
+
     async with MetaSessionLocal() as db:
-        result = await db.execute(
-            select(User).where(User.id == uuid.UUID("00000000-0000-0000-0000-000000000001"))
-        )
-        if result.scalar_one_or_none() is None:
-            dev_user = User(
-                id=uuid.UUID("00000000-0000-0000-0000-000000000001"),
-                ms_object_id="dev-superadmin",
-                email="dev@localhost",
-                display_name="Dev Superadmin",
-                is_superadmin=True,
-                is_active=True,
-            )
-            db.add(dev_user)
-            await db.commit()
+        for u in seed_users:
+            result = await db.execute(select(User).where(User.id == u["id"]))
+            if result.scalar_one_or_none() is None:
+                db.add(User(
+                    id=u["id"],
+                    email=u["email"],
+                    display_name=u["display_name"],
+                    is_superadmin=True,
+                    is_active=True,
+                ))
+        await db.commit()
 
 
 @asynccontextmanager
