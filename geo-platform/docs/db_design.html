@@ -1,0 +1,786 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Geo Platform — Database Design</title>
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+      background: #0f1117;
+      color: #e2e8f0;
+      padding: 32px 24px;
+      min-height: 100vh;
+    }
+
+    h1 {
+      font-size: 24px;
+      font-weight: 700;
+      color: #f8fafc;
+      margin-bottom: 4px;
+    }
+    .subtitle {
+      font-size: 13px;
+      color: #64748b;
+      margin-bottom: 36px;
+    }
+
+    /* ── Database sections ─────────────────────────────────── */
+    .db-section {
+      margin-bottom: 48px;
+    }
+    .db-header {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      margin-bottom: 20px;
+    }
+    .db-badge {
+      font-size: 11px;
+      font-weight: 700;
+      letter-spacing: 0.08em;
+      padding: 3px 10px;
+      border-radius: 99px;
+      text-transform: uppercase;
+    }
+    .badge-meta   { background: #1e3a5f; color: #60a5fa; border: 1px solid #2563eb44; }
+    .badge-feat   { background: #1a3a2a; color: #4ade80; border: 1px solid #16a34a44; }
+    .db-title {
+      font-size: 18px;
+      font-weight: 600;
+      color: #f1f5f9;
+    }
+    .db-port {
+      font-size: 12px;
+      color: #64748b;
+      font-family: "Consolas", "Fira Code", monospace;
+    }
+
+    /* ── Grid of table cards ───────────────────────────────── */
+    .tables-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fill, minmax(340px, 1fr));
+      gap: 16px;
+    }
+
+    .table-card {
+      background: #1e2330;
+      border: 1px solid #2d3748;
+      border-radius: 10px;
+      overflow: hidden;
+    }
+    .table-card:hover {
+      border-color: #4a5568;
+    }
+    .card-header {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding: 10px 14px;
+      background: #252d3d;
+      border-bottom: 1px solid #2d3748;
+    }
+    .table-name {
+      font-family: "Consolas", "Fira Code", monospace;
+      font-size: 13px;
+      font-weight: 600;
+      color: #93c5fd;
+    }
+    .table-tag {
+      font-size: 10px;
+      font-weight: 600;
+      padding: 2px 7px;
+      border-radius: 4px;
+      letter-spacing: 0.05em;
+    }
+    .tag-core    { background: #1e3a5f; color: #60a5fa; }
+    .tag-auth    { background: #3b1f5e; color: #c084fc; }
+    .tag-perms   { background: #2a1f3d; color: #a78bfa; }
+    .tag-sync    { background: #1a3a2a; color: #4ade80; }
+    .tag-audit   { background: #3b2a1a; color: #fb923c; }
+    .tag-geo     { background: #1a3030; color: #2dd4bf; }
+    .tag-part    { background: #1a3a1a; color: #86efac; }
+
+    .card-desc {
+      font-size: 11px;
+      color: #64748b;
+      padding: 6px 14px 8px;
+      border-bottom: 1px solid #1e2330;
+      line-height: 1.5;
+    }
+
+    /* ── Column rows ───────────────────────────────────────── */
+    table.cols {
+      width: 100%;
+      border-collapse: collapse;
+    }
+    table.cols tr:hover td { background: #252d3d; }
+    table.cols td {
+      padding: 4px 14px;
+      font-size: 11.5px;
+      vertical-align: top;
+      border-bottom: 1px solid #1e2330;
+    }
+    table.cols tr:last-child td { border-bottom: none; }
+    .col-name {
+      font-family: "Consolas", "Fira Code", monospace;
+      color: #e2e8f0;
+      white-space: nowrap;
+      width: 40%;
+    }
+    .col-name.pk { color: #fbbf24; }
+    .col-name.fk { color: #818cf8; }
+    .col-type {
+      font-family: "Consolas", "Fira Code", monospace;
+      color: #6ee7b7;
+      font-size: 10.5px;
+      width: 30%;
+    }
+    .col-note {
+      color: #64748b;
+      font-size: 10.5px;
+    }
+    .badge-pk {
+      font-size: 9px;
+      font-weight: 700;
+      background: #78350f;
+      color: #fcd34d;
+      padding: 1px 4px;
+      border-radius: 3px;
+      margin-right: 3px;
+    }
+    .badge-fk {
+      font-size: 9px;
+      font-weight: 700;
+      background: #1e1b4b;
+      color: #a5b4fc;
+      padding: 1px 4px;
+      border-radius: 3px;
+      margin-right: 3px;
+    }
+    .badge-null {
+      font-size: 9px;
+      color: #475569;
+      padding: 1px 3px;
+    }
+    .badge-soft {
+      font-size: 9px;
+      background: #1f2937;
+      color: #9ca3af;
+      padding: 1px 4px;
+      border-radius: 3px;
+      margin-right: 3px;
+    }
+    .badge-opt {
+      font-size: 9px;
+      background: #292524;
+      color: #a8a29e;
+      padding: 1px 4px;
+      border-radius: 3px;
+    }
+
+    /* ── Relationship diagram ──────────────────────────────── */
+    .section-title {
+      font-size: 15px;
+      font-weight: 600;
+      color: #94a3b8;
+      margin-bottom: 16px;
+      margin-top: 40px;
+      display: flex;
+      align-items: center;
+      gap: 8px;
+    }
+    .section-title::after {
+      content: '';
+      flex: 1;
+      height: 1px;
+      background: #2d3748;
+    }
+
+    .rel-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fill, minmax(260px, 1fr));
+      gap: 10px;
+    }
+    .rel-card {
+      background: #1a2030;
+      border: 1px solid #2d3748;
+      border-radius: 8px;
+      padding: 12px 14px;
+      font-size: 11.5px;
+    }
+    .rel-card .rel-header {
+      font-family: "Consolas", monospace;
+      color: #93c5fd;
+      font-weight: 600;
+      margin-bottom: 6px;
+    }
+    .rel-line {
+      color: #64748b;
+      display: flex;
+      align-items: flex-start;
+      gap: 6px;
+      margin-top: 4px;
+      line-height: 1.5;
+    }
+    .rel-arrow { color: #4ade80; flex-shrink: 0; }
+    .rel-target { font-family: "Consolas", monospace; color: #a5b4fc; }
+
+    /* ── Key facts bar ─────────────────────────────────────── */
+    .facts-bar {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 10px;
+      margin-bottom: 36px;
+    }
+    .fact {
+      background: #1e2330;
+      border: 1px solid #2d3748;
+      border-radius: 8px;
+      padding: 10px 16px;
+      flex: 1;
+      min-width: 160px;
+    }
+    .fact-value {
+      font-size: 22px;
+      font-weight: 700;
+      color: #60a5fa;
+    }
+    .fact-label {
+      font-size: 11px;
+      color: #64748b;
+      margin-top: 2px;
+    }
+
+    /* ── Partition note ────────────────────────────────────── */
+    .partition-note {
+      background: #1a3a1a;
+      border: 1px solid #16a34a44;
+      border-radius: 8px;
+      padding: 14px 18px;
+      font-size: 12px;
+      color: #86efac;
+      line-height: 1.7;
+      margin-bottom: 16px;
+    }
+    .partition-note strong { color: #4ade80; }
+    code {
+      font-family: "Consolas", "Fira Code", monospace;
+      background: #0f1117;
+      padding: 1px 5px;
+      border-radius: 3px;
+      font-size: 11px;
+    }
+  </style>
+</head>
+<body>
+
+<h1>Geo Platform — Database Design</h1>
+<p class="subtitle">Two PostgreSQL 16 + PostGIS 3.4 databases &nbsp;·&nbsp; 21 tables in geo_meta &nbsp;·&nbsp; 32-partition feature store in geo_features</p>
+
+<!-- Key facts -->
+<div class="facts-bar">
+  <div class="fact"><div class="fact-value">2</div><div class="fact-label">Databases</div></div>
+  <div class="fact"><div class="fact-value">21</div><div class="fact-label">Tables (geo_meta)</div></div>
+  <div class="fact"><div class="fact-value">32</div><div class="fact-label">Feature partitions</div></div>
+  <div class="fact"><div class="fact-value">HASH</div><div class="fact-label">Partition strategy (layer_id)</div></div>
+  <div class="fact"><div class="fact-value">4326</div><div class="fact-label">Default SRID (WGS 84)</div></div>
+  <div class="fact"><div class="fact-value">HS256</div><div class="fact-label">Auth (local JWT)</div></div>
+</div>
+
+<!-- ═══════════════════════════════════════════════════════════ -->
+<!-- GEO_META                                                    -->
+<!-- ═══════════════════════════════════════════════════════════ -->
+<div class="db-section">
+  <div class="db-header">
+    <span class="db-badge badge-meta">geo_meta</span>
+    <span class="db-title">Metadata database</span>
+    <span class="db-port">:5432 (via pgbouncer :6432)</span>
+  </div>
+
+  <div class="tables-grid">
+
+    <!-- users -->
+    <div class="table-card">
+      <div class="card-header">
+        <span class="table-name">users</span>
+        <span class="table-tag tag-auth">auth</span>
+      </div>
+      <div class="card-desc">Platform users. Supports local-auth and MS Entra users. ms_object_id is nullable for local-only accounts.</div>
+      <table class="cols">
+        <tr><td class="col-name pk"><span class="badge-pk">PK</span>id</td><td class="col-type">uuid</td><td class="col-note">auto-generated</td></tr>
+        <tr><td class="col-name">ms_object_id</td><td class="col-type">varchar</td><td class="col-note">null for local users, unique</td></tr>
+        <tr><td class="col-name">email</td><td class="col-type">varchar</td><td class="col-note">used for login</td></tr>
+        <tr><td class="col-name">display_name</td><td class="col-type">varchar</td><td class="col-note"><span class="badge-opt">nullable</span></td></tr>
+        <tr><td class="col-name">is_superadmin</td><td class="col-type">boolean</td><td class="col-note">bypasses all permission checks</td></tr>
+        <tr><td class="col-name">is_active</td><td class="col-type">boolean</td><td class="col-note">soft deactivate</td></tr>
+        <tr><td class="col-name">last_seen_at</td><td class="col-type">timestamptz</td><td class="col-note">updated on every token use</td></tr>
+        <tr><td class="col-name">deactivated_at</td><td class="col-type">timestamptz</td><td class="col-note"><span class="badge-opt">nullable</span></td></tr>
+        <tr><td class="col-name">created_at</td><td class="col-type">timestamptz</td><td class="col-note">server default now()</td></tr>
+      </table>
+    </div>
+
+    <!-- ms_groups -->
+    <div class="table-card">
+      <div class="card-header">
+        <span class="table-name">ms_groups</span>
+        <span class="table-tag tag-auth">groups</span>
+      </div>
+      <div class="card-desc">Holds both custom groups (is_custom=true) and MS Entra groups. Custom groups use ms_group_id = "custom:{uuid}".</div>
+      <table class="cols">
+        <tr><td class="col-name pk"><span class="badge-pk">PK</span>id</td><td class="col-type">uuid</td><td class="col-note"></td></tr>
+        <tr><td class="col-name">ms_group_id</td><td class="col-type">varchar</td><td class="col-note">unique, "custom:{uuid}" for custom</td></tr>
+        <tr><td class="col-name">display_name</td><td class="col-type">varchar</td><td class="col-note"><span class="badge-opt">nullable</span></td></tr>
+        <tr><td class="col-name">description</td><td class="col-type">varchar</td><td class="col-note"><span class="badge-opt">nullable</span></td></tr>
+        <tr><td class="col-name">is_custom</td><td class="col-type">boolean</td><td class="col-note">true = managed in-app</td></tr>
+        <tr><td class="col-name">synced_at</td><td class="col-type">timestamptz</td><td class="col-note">null for custom groups</td></tr>
+        <tr><td class="col-name">created_at</td><td class="col-type">timestamptz</td><td class="col-note"></td></tr>
+      </table>
+    </div>
+
+    <!-- custom_group_members -->
+    <div class="table-card">
+      <div class="card-header">
+        <span class="table-name">custom_group_members</span>
+        <span class="table-tag tag-auth">groups</span>
+      </div>
+      <div class="card-desc">Many-to-many: manually assigned users to custom groups. Composite PK.</div>
+      <table class="cols">
+        <tr><td class="col-name fk pk"><span class="badge-pk">PK</span><span class="badge-fk">FK</span>group_id</td><td class="col-type">uuid</td><td class="col-note">→ ms_groups.id</td></tr>
+        <tr><td class="col-name fk pk"><span class="badge-pk">PK</span><span class="badge-fk">FK</span>user_id</td><td class="col-type">uuid</td><td class="col-note">→ users.id</td></tr>
+        <tr><td class="col-name fk">added_by</td><td class="col-type">uuid</td><td class="col-note">→ users.id <span class="badge-opt">nullable</span></td></tr>
+        <tr><td class="col-name">added_at</td><td class="col-type">timestamptz</td><td class="col-note">server default now()</td></tr>
+      </table>
+    </div>
+
+    <!-- custom_group_ms_links -->
+    <div class="table-card">
+      <div class="card-header">
+        <span class="table-name">custom_group_ms_links</span>
+        <span class="table-tag tag-auth">groups</span>
+      </div>
+      <div class="card-desc">Links a custom group to a real MS Entra group ID. All members of the linked MS group inherit the custom group's permissions.</div>
+      <table class="cols">
+        <tr><td class="col-name fk pk"><span class="badge-pk">PK</span><span class="badge-fk">FK</span>custom_group_id</td><td class="col-type">uuid</td><td class="col-note">→ ms_groups.id</td></tr>
+        <tr><td class="col-name pk"><span class="badge-pk">PK</span>ms_group_id</td><td class="col-type">varchar</td><td class="col-note">MS Entra group object ID</td></tr>
+        <tr><td class="col-name">ms_display_name</td><td class="col-type">varchar</td><td class="col-note"><span class="badge-opt">nullable</span></td></tr>
+        <tr><td class="col-name">linked_at</td><td class="col-type">timestamptz</td><td class="col-note"></td></tr>
+      </table>
+    </div>
+
+    <!-- geo_databases -->
+    <div class="table-card">
+      <div class="card-header">
+        <span class="table-name">geo_databases</span>
+        <span class="table-tag tag-core">core</span>
+      </div>
+      <div class="card-desc">Top-level containers. Everything (layers, rasters, group_layers) lives inside a database.</div>
+      <table class="cols">
+        <tr><td class="col-name pk"><span class="badge-pk">PK</span>id</td><td class="col-type">uuid</td><td class="col-note"></td></tr>
+        <tr><td class="col-name">name</td><td class="col-type">varchar</td><td class="col-note">unique</td></tr>
+        <tr><td class="col-name">description</td><td class="col-type">varchar</td><td class="col-note"><span class="badge-opt">nullable</span></td></tr>
+        <tr><td class="col-name">default_srid</td><td class="col-type">integer</td><td class="col-note">default 4326</td></tr>
+        <tr><td class="col-name">tags</td><td class="col-type">varchar[]</td><td class="col-note">array</td></tr>
+        <tr><td class="col-name">created_at</td><td class="col-type">timestamptz</td><td class="col-note"></td></tr>
+      </table>
+    </div>
+
+    <!-- group_layers -->
+    <div class="table-card">
+      <div class="card-header">
+        <span class="table-name">group_layers</span>
+        <span class="table-tag tag-core">core</span>
+      </div>
+      <div class="card-desc">Folder tree for organising layers. Self-referencing (parent_id → group_layers). Soft-deleted.</div>
+      <table class="cols">
+        <tr><td class="col-name pk"><span class="badge-pk">PK</span>id</td><td class="col-type">uuid</td><td class="col-note"></td></tr>
+        <tr><td class="col-name fk"><span class="badge-fk">FK</span>database_id</td><td class="col-type">uuid</td><td class="col-note">→ geo_databases.id CASCADE</td></tr>
+        <tr><td class="col-name fk">parent_id</td><td class="col-type">uuid</td><td class="col-note">→ group_layers.id <span class="badge-opt">nullable</span></td></tr>
+        <tr><td class="col-name">name</td><td class="col-type">varchar</td><td class="col-note"></td></tr>
+        <tr><td class="col-name">description</td><td class="col-type">varchar</td><td class="col-note"><span class="badge-opt">nullable</span></td></tr>
+        <tr><td class="col-name">tags</td><td class="col-type">varchar[]</td><td class="col-note"></td></tr>
+        <tr><td class="col-name">sort_order</td><td class="col-type">integer</td><td class="col-note"></td></tr>
+        <tr><td class="col-name"><span class="badge-soft">SOFT</span>deleted_at</td><td class="col-type">timestamptz</td><td class="col-note"><span class="badge-opt">nullable</span></td></tr>
+        <tr><td class="col-name fk">deleted_by</td><td class="col-type">uuid</td><td class="col-note">→ users.id</td></tr>
+        <tr><td class="col-name">created_at</td><td class="col-type">timestamptz</td><td class="col-note"></td></tr>
+      </table>
+    </div>
+
+    <!-- layers -->
+    <div class="table-card">
+      <div class="card-header">
+        <span class="table-name">layers</span>
+        <span class="table-tag tag-core">core</span>
+      </div>
+      <div class="card-desc">Vector layer definitions. Tracks geometry type, SRID, lock state, bounding box, and ArcGIS .lyrx reference.</div>
+      <table class="cols">
+        <tr><td class="col-name pk"><span class="badge-pk">PK</span>id</td><td class="col-type">uuid</td><td class="col-note"></td></tr>
+        <tr><td class="col-name fk"><span class="badge-fk">FK</span>database_id</td><td class="col-type">uuid</td><td class="col-note">→ geo_databases.id CASCADE</td></tr>
+        <tr><td class="col-name fk">group_layer_id</td><td class="col-type">uuid</td><td class="col-note">→ group_layers.id SET NULL</td></tr>
+        <tr><td class="col-name">name</td><td class="col-type">varchar</td><td class="col-note"></td></tr>
+        <tr><td class="col-name">geometry_type</td><td class="col-type">varchar</td><td class="col-note">Point / LineString / Polygon</td></tr>
+        <tr><td class="col-name">srid</td><td class="col-type">integer</td><td class="col-note">default 4326</td></tr>
+        <tr><td class="col-name">status</td><td class="col-type">varchar</td><td class="col-note">draft | published | archived</td></tr>
+        <tr><td class="col-name">health</td><td class="col-type">varchar</td><td class="col-note">ok | error</td></tr>
+        <tr><td class="col-name">shard_id</td><td class="col-type">integer</td><td class="col-note">partition routing hint</td></tr>
+        <tr><td class="col-name">is_locked</td><td class="col-type">boolean</td><td class="col-note">prevents edits when true</td></tr>
+        <tr><td class="col-name fk">locked_by</td><td class="col-type">uuid</td><td class="col-note">→ users.id</td></tr>
+        <tr><td class="col-name">locked_at</td><td class="col-type">timestamptz</td><td class="col-note"><span class="badge-opt">nullable</span></td></tr>
+        <tr><td class="col-name">lock_reason</td><td class="col-type">text</td><td class="col-note"><span class="badge-opt">nullable</span></td></tr>
+        <tr><td class="col-name">bbox</td><td class="col-type">geometry(POLYGON,4326)</td><td class="col-note">auto-updated on feature writes</td></tr>
+        <tr><td class="col-name">lyrx_s3_key</td><td class="col-type">varchar</td><td class="col-note">S3 key, not URL</td></tr>
+        <tr><td class="col-name">sort_order</td><td class="col-type">integer</td><td class="col-note"></td></tr>
+        <tr><td class="col-name"><span class="badge-soft">SOFT</span>deleted_at</td><td class="col-type">timestamptz</td><td class="col-note"><span class="badge-opt">nullable</span></td></tr>
+        <tr><td class="col-name">created_at / updated_at</td><td class="col-type">timestamptz</td><td class="col-note"></td></tr>
+      </table>
+    </div>
+
+    <!-- layer_owners -->
+    <div class="table-card">
+      <div class="card-header">
+        <span class="table-name">layer_owners</span>
+        <span class="table-tag tag-core">core</span>
+      </div>
+      <div class="card-desc">Many-to-many: users who own a layer. is_primary marks the lead owner (auto-assigned to creator).</div>
+      <table class="cols">
+        <tr><td class="col-name fk pk"><span class="badge-pk">PK</span><span class="badge-fk">FK</span>layer_id</td><td class="col-type">uuid</td><td class="col-note">→ layers.id CASCADE</td></tr>
+        <tr><td class="col-name fk pk"><span class="badge-pk">PK</span><span class="badge-fk">FK</span>user_id</td><td class="col-type">uuid</td><td class="col-note">→ users.id CASCADE</td></tr>
+        <tr><td class="col-name">is_primary</td><td class="col-type">boolean</td><td class="col-note"></td></tr>
+        <tr><td class="col-name">assigned_at</td><td class="col-type">timestamptz</td><td class="col-note"></td></tr>
+        <tr><td class="col-name fk">assigned_by</td><td class="col-type">uuid</td><td class="col-note">→ users.id <span class="badge-opt">nullable</span></td></tr>
+      </table>
+    </div>
+
+    <!-- layer_schema -->
+    <div class="table-card">
+      <div class="card-header">
+        <span class="table-name">layer_schema</span>
+        <span class="table-tag tag-core">core</span>
+      </div>
+      <div class="card-desc">JSON Schema for validating feature properties. One row per layer. schema_version increments on every PUT.</div>
+      <table class="cols">
+        <tr><td class="col-name pk"><span class="badge-pk">PK</span>id</td><td class="col-type">uuid</td><td class="col-note"></td></tr>
+        <tr><td class="col-name fk"><span class="badge-fk">FK</span>layer_id</td><td class="col-type">uuid</td><td class="col-note">→ layers.id CASCADE, unique</td></tr>
+        <tr><td class="col-name">json_schema</td><td class="col-type">jsonb</td><td class="col-note">JSON Schema object</td></tr>
+        <tr><td class="col-name">schema_version</td><td class="col-type">integer</td><td class="col-note">auto-incremented</td></tr>
+        <tr><td class="col-name fk">updated_by</td><td class="col-type">uuid</td><td class="col-note">→ users.id</td></tr>
+        <tr><td class="col-name">updated_at</td><td class="col-type">timestamptz</td><td class="col-note"></td></tr>
+      </table>
+    </div>
+
+    <!-- layer_styles -->
+    <div class="table-card">
+      <div class="card-header">
+        <span class="table-name">layer_styles</span>
+        <span class="table-tag tag-core">symbology</span>
+      </div>
+      <div class="card-desc">ArcGIS renderer, label, and popup configs stored as JSONB. One layer can have multiple named styles; is_default marks the active one.</div>
+      <table class="cols">
+        <tr><td class="col-name pk"><span class="badge-pk">PK</span>id</td><td class="col-type">uuid</td><td class="col-note"></td></tr>
+        <tr><td class="col-name fk"><span class="badge-fk">FK</span>layer_id</td><td class="col-type">uuid</td><td class="col-note">→ layers.id CASCADE</td></tr>
+        <tr><td class="col-name">name</td><td class="col-type">varchar</td><td class="col-note">default "default"</td></tr>
+        <tr><td class="col-name">renderer</td><td class="col-type">jsonb</td><td class="col-note">ArcGIS renderer definition</td></tr>
+        <tr><td class="col-name">label_config</td><td class="col-type">jsonb</td><td class="col-note"><span class="badge-opt">nullable</span></td></tr>
+        <tr><td class="col-name">popup_config</td><td class="col-type">jsonb</td><td class="col-note"><span class="badge-opt">nullable</span></td></tr>
+        <tr><td class="col-name">is_default</td><td class="col-type">boolean</td><td class="col-note"></td></tr>
+        <tr><td class="col-name">lyrx_s3_key</td><td class="col-type">varchar</td><td class="col-note">S3 key for .lyrx file</td></tr>
+        <tr><td class="col-name fk">created_by</td><td class="col-type">uuid</td><td class="col-note">→ users.id</td></tr>
+        <tr><td class="col-name">created_at</td><td class="col-type">timestamptz</td><td class="col-note"></td></tr>
+      </table>
+    </div>
+
+    <!-- roles -->
+    <div class="table-card">
+      <div class="card-header">
+        <span class="table-name">roles</span>
+        <span class="table-tag tag-perms">permissions</span>
+      </div>
+      <div class="card-desc">Named permission bitmasks. System roles (Viewer, Editor, Admin…) are seeded at startup. Custom roles can be created.</div>
+      <table class="cols">
+        <tr><td class="col-name pk"><span class="badge-pk">PK</span>id</td><td class="col-type">uuid</td><td class="col-note"></td></tr>
+        <tr><td class="col-name">name</td><td class="col-type">varchar</td><td class="col-note">unique</td></tr>
+        <tr><td class="col-name">description</td><td class="col-type">varchar</td><td class="col-note"><span class="badge-opt">nullable</span></td></tr>
+        <tr><td class="col-name">can_read</td><td class="col-type">boolean</td><td class="col-note"></td></tr>
+        <tr><td class="col-name">can_write</td><td class="col-type">boolean</td><td class="col-note"></td></tr>
+        <tr><td class="col-name">can_delete</td><td class="col-type">boolean</td><td class="col-note"></td></tr>
+        <tr><td class="col-name">can_export</td><td class="col-type">boolean</td><td class="col-note"></td></tr>
+        <tr><td class="col-name">can_manage_style</td><td class="col-type">boolean</td><td class="col-note"></td></tr>
+        <tr><td class="col-name">can_manage_perms</td><td class="col-type">boolean</td><td class="col-note"></td></tr>
+        <tr><td class="col-name">can_publish</td><td class="col-type">boolean</td><td class="col-note"></td></tr>
+        <tr><td class="col-name">is_system_role</td><td class="col-type">boolean</td><td class="col-note">protects against deletion</td></tr>
+      </table>
+    </div>
+
+    <!-- permissions -->
+    <div class="table-card">
+      <div class="card-header">
+        <span class="table-name">permissions</span>
+        <span class="table-tag tag-perms">permissions</span>
+      </div>
+      <div class="card-desc">ACL entries. Principal = user OR group (one only). Resource = database OR group_layer OR layer (one only). Supports allow/deny.</div>
+      <table class="cols">
+        <tr><td class="col-name pk"><span class="badge-pk">PK</span>id</td><td class="col-type">uuid</td><td class="col-note"></td></tr>
+        <tr><td class="col-name">ms_user_id</td><td class="col-type">varchar</td><td class="col-note">XOR with ms_group_id</td></tr>
+        <tr><td class="col-name">ms_group_id</td><td class="col-type">varchar</td><td class="col-note">XOR with ms_user_id</td></tr>
+        <tr><td class="col-name fk">database_id</td><td class="col-type">uuid</td><td class="col-note">→ geo_databases.id</td></tr>
+        <tr><td class="col-name fk">group_layer_id</td><td class="col-type">uuid</td><td class="col-note">→ group_layers.id</td></tr>
+        <tr><td class="col-name fk">layer_id</td><td class="col-type">uuid</td><td class="col-note">→ layers.id</td></tr>
+        <tr><td class="col-name fk"><span class="badge-fk">FK</span>role_id</td><td class="col-type">uuid</td><td class="col-note">→ roles.id NOT NULL</td></tr>
+        <tr><td class="col-name">allow</td><td class="col-type">boolean</td><td class="col-note">false = explicit deny</td></tr>
+        <tr><td class="col-name fk">granted_by</td><td class="col-type">uuid</td><td class="col-note">→ users.id</td></tr>
+        <tr><td class="col-name">granted_at</td><td class="col-type">timestamptz</td><td class="col-note"></td></tr>
+      </table>
+    </div>
+
+    <!-- raster_catalog -->
+    <div class="table-card">
+      <div class="card-header">
+        <span class="table-name">raster_catalog</span>
+        <span class="table-tag tag-geo">geo</span>
+      </div>
+      <div class="card-desc">Metadata for raster files (COGs) stored in MinIO. Only the S3 key is stored — presigned URLs generated on demand.</div>
+      <table class="cols">
+        <tr><td class="col-name pk"><span class="badge-pk">PK</span>id</td><td class="col-type">uuid</td><td class="col-note"></td></tr>
+        <tr><td class="col-name fk">database_id</td><td class="col-type">uuid</td><td class="col-note">→ geo_databases.id CASCADE</td></tr>
+        <tr><td class="col-name fk">group_layer_id</td><td class="col-type">uuid</td><td class="col-note">→ group_layers.id SET NULL</td></tr>
+        <tr><td class="col-name">name</td><td class="col-type">varchar</td><td class="col-note"></td></tr>
+        <tr><td class="col-name">s3_key</td><td class="col-type">varchar</td><td class="col-note">MinIO object key</td></tr>
+        <tr><td class="col-name">format</td><td class="col-type">varchar</td><td class="col-note">default "COG"</td></tr>
+        <tr><td class="col-name">srid</td><td class="col-type">integer</td><td class="col-note">default 4326</td></tr>
+        <tr><td class="col-name">resolution_m</td><td class="col-type">float</td><td class="col-note"><span class="badge-opt">nullable</span></td></tr>
+        <tr><td class="col-name">band_count</td><td class="col-type">integer</td><td class="col-note"><span class="badge-opt">nullable</span></td></tr>
+        <tr><td class="col-name">bbox</td><td class="col-type">geometry(POLYGON,4326)</td><td class="col-note"><span class="badge-opt">nullable</span></td></tr>
+        <tr><td class="col-name">tags</td><td class="col-type">varchar[]</td><td class="col-note"></td></tr>
+        <tr><td class="col-name">status</td><td class="col-type">varchar</td><td class="col-note">ready | processing | error</td></tr>
+        <tr><td class="col-name">created_at</td><td class="col-type">timestamptz</td><td class="col-note"></td></tr>
+      </table>
+    </div>
+
+    <!-- audit_log -->
+    <div class="table-card">
+      <div class="card-header">
+        <span class="table-name">audit_log</span>
+        <span class="table-tag tag-audit">audit</span>
+      </div>
+      <div class="card-desc">Immutable write of every create/update/delete action. Append-only — never updated or deleted.</div>
+      <table class="cols">
+        <tr><td class="col-name pk"><span class="badge-pk">PK</span>id</td><td class="col-type">bigserial</td><td class="col-note"></td></tr>
+        <tr><td class="col-name fk">user_id</td><td class="col-type">uuid</td><td class="col-note">→ users.id <span class="badge-opt">nullable</span></td></tr>
+        <tr><td class="col-name">ms_object_id</td><td class="col-type">varchar</td><td class="col-note">redundant copy for audit integrity</td></tr>
+        <tr><td class="col-name">action</td><td class="col-type">varchar</td><td class="col-note">create / update / delete / …</td></tr>
+        <tr><td class="col-name">resource_type</td><td class="col-type">varchar</td><td class="col-note">layer / feature / permission / …</td></tr>
+        <tr><td class="col-name">resource_id</td><td class="col-type">varchar</td><td class="col-note">string-serialised UUID or int</td></tr>
+        <tr><td class="col-name">old_value</td><td class="col-type">jsonb</td><td class="col-note"><span class="badge-opt">nullable</span></td></tr>
+        <tr><td class="col-name">new_value</td><td class="col-type">jsonb</td><td class="col-note"><span class="badge-opt">nullable</span></td></tr>
+        <tr><td class="col-name">ip_address</td><td class="col-type">inet</td><td class="col-note"><span class="badge-opt">nullable</span></td></tr>
+        <tr><td class="col-name">error_message</td><td class="col-type">text</td><td class="col-note"><span class="badge-opt">nullable</span></td></tr>
+        <tr><td class="col-name">created_at</td><td class="col-type">timestamptz</td><td class="col-note"></td></tr>
+      </table>
+    </div>
+
+    <!-- layer_events -->
+    <div class="table-card">
+      <div class="card-header">
+        <span class="table-name">layer_events</span>
+        <span class="table-tag tag-audit">events</span>
+      </div>
+      <div class="card-desc">Layer-specific event stream (published, locked, schema_updated…). Finer grained than audit_log.</div>
+      <table class="cols">
+        <tr><td class="col-name pk"><span class="badge-pk">PK</span>id</td><td class="col-type">bigserial</td><td class="col-note"></td></tr>
+        <tr><td class="col-name fk"><span class="badge-fk">FK</span>layer_id</td><td class="col-type">uuid</td><td class="col-note">→ layers.id CASCADE</td></tr>
+        <tr><td class="col-name fk">user_id</td><td class="col-type">uuid</td><td class="col-note">→ users.id</td></tr>
+        <tr><td class="col-name">event_type</td><td class="col-type">varchar</td><td class="col-note"></td></tr>
+        <tr><td class="col-name">payload</td><td class="col-type">jsonb</td><td class="col-note"><span class="badge-opt">nullable</span></td></tr>
+        <tr><td class="col-name">created_at</td><td class="col-type">timestamptz</td><td class="col-note"></td></tr>
+      </table>
+    </div>
+
+    <!-- sync_snapshots -->
+    <div class="table-card">
+      <div class="card-header">
+        <span class="table-name">sync_snapshots</span>
+        <span class="table-tag tag-sync">sync</span>
+      </div>
+      <div class="card-desc">Records when Argo downloaded a snapshot. The snapshotted_at timestamp is the baseline for delta queries.</div>
+      <table class="cols">
+        <tr><td class="col-name pk"><span class="badge-pk">PK</span>id</td><td class="col-type">uuid</td><td class="col-note"></td></tr>
+        <tr><td class="col-name fk"><span class="badge-fk">FK</span>layer_id</td><td class="col-type">uuid</td><td class="col-note">→ layers.id CASCADE</td></tr>
+        <tr><td class="col-name fk"><span class="badge-fk">FK</span>user_id</td><td class="col-type">uuid</td><td class="col-note">→ users.id CASCADE</td></tr>
+        <tr><td class="col-name">device_id</td><td class="col-type">varchar</td><td class="col-note">Argo device identifier</td></tr>
+        <tr><td class="col-name">snapshotted_at</td><td class="col-type">timestamptz</td><td class="col-note">delta baseline</td></tr>
+        <tr><td class="col-name">expires_at</td><td class="col-type">timestamptz</td><td class="col-note">snapshot TTL (72 h)</td></tr>
+        <tr><td class="col-name">feature_count</td><td class="col-type">integer</td><td class="col-note"></td></tr>
+      </table>
+    </div>
+
+    <!-- sync_conflicts -->
+    <div class="table-card">
+      <div class="card-header">
+        <span class="table-name">sync_conflicts</span>
+        <span class="table-tag tag-sync">sync</span>
+      </div>
+      <div class="card-desc">Optimistic lock conflicts: client sent version N but server is already at N+k. Resolved via web UI (server_wins / client_wins / manual).</div>
+      <table class="cols">
+        <tr><td class="col-name pk"><span class="badge-pk">PK</span>id</td><td class="col-type">uuid</td><td class="col-note"></td></tr>
+        <tr><td class="col-name fk"><span class="badge-fk">FK</span>layer_id</td><td class="col-type">uuid</td><td class="col-note">→ layers.id CASCADE</td></tr>
+        <tr><td class="col-name">feature_id</td><td class="col-type">bigint</td><td class="col-note">feature in geo_features</td></tr>
+        <tr><td class="col-name fk"><span class="badge-fk">FK</span>user_id</td><td class="col-type">uuid</td><td class="col-note">→ users.id</td></tr>
+        <tr><td class="col-name">device_id</td><td class="col-type">varchar</td><td class="col-note"></td></tr>
+        <tr><td class="col-name">client_payload</td><td class="col-type">jsonb</td><td class="col-note">the rejected edit</td></tr>
+        <tr><td class="col-name">server_version</td><td class="col-type">integer</td><td class="col-note">current DB version</td></tr>
+        <tr><td class="col-name">client_version</td><td class="col-type">integer</td><td class="col-note">version client expected</td></tr>
+        <tr><td class="col-name">resolution</td><td class="col-type">varchar</td><td class="col-note">pending|server_wins|client_wins|manual</td></tr>
+        <tr><td class="col-name fk">resolved_by</td><td class="col-type">uuid</td><td class="col-note">→ users.id</td></tr>
+        <tr><td class="col-name">resolved_at</td><td class="col-type">timestamptz</td><td class="col-note"><span class="badge-opt">nullable</span></td></tr>
+        <tr><td class="col-name">created_at</td><td class="col-type">timestamptz</td><td class="col-note"></td></tr>
+      </table>
+    </div>
+
+    <!-- failed_syncs -->
+    <div class="table-card">
+      <div class="card-header">
+        <span class="table-name">failed_syncs</span>
+        <span class="table-tag tag-sync">sync</span>
+      </div>
+      <div class="card-desc">Push attempts that failed for non-conflict reasons (validation error, network, etc.). Kept for diagnostics and retry.</div>
+      <table class="cols">
+        <tr><td class="col-name pk"><span class="badge-pk">PK</span>id</td><td class="col-type">uuid</td><td class="col-note"></td></tr>
+        <tr><td class="col-name fk">user_id</td><td class="col-type">uuid</td><td class="col-note">→ users.id</td></tr>
+        <tr><td class="col-name fk">layer_id</td><td class="col-type">uuid</td><td class="col-note">→ layers.id</td></tr>
+        <tr><td class="col-name">device_id</td><td class="col-type">varchar</td><td class="col-note"><span class="badge-opt">nullable</span></td></tr>
+        <tr><td class="col-name">payload</td><td class="col-type">jsonb</td><td class="col-note">rejected edit payload</td></tr>
+        <tr><td class="col-name">error_code</td><td class="col-type">varchar</td><td class="col-note"></td></tr>
+        <tr><td class="col-name">error_message</td><td class="col-type">varchar</td><td class="col-note"></td></tr>
+        <tr><td class="col-name">retried_at</td><td class="col-type">timestamptz</td><td class="col-note"><span class="badge-opt">nullable</span></td></tr>
+        <tr><td class="col-name">resolved</td><td class="col-type">boolean</td><td class="col-note"></td></tr>
+        <tr><td class="col-name">created_at</td><td class="col-type">timestamptz</td><td class="col-note"></td></tr>
+      </table>
+    </div>
+
+    <!-- group_quotas -->
+    <div class="table-card">
+      <div class="card-header">
+        <span class="table-name">group_quotas</span>
+        <span class="table-tag tag-perms">quotas</span>
+      </div>
+      <div class="card-desc">Per-group resource limits. ms_group_id can reference a custom group or a real MS Entra group.</div>
+      <table class="cols">
+        <tr><td class="col-name pk"><span class="badge-pk">PK</span>ms_group_id</td><td class="col-type">varchar</td><td class="col-note">matches ms_groups.ms_group_id</td></tr>
+        <tr><td class="col-name">max_layers</td><td class="col-type">integer</td><td class="col-note">default 100</td></tr>
+        <tr><td class="col-name">max_features_per_layer</td><td class="col-type">bigint</td><td class="col-note">default 1,000,000</td></tr>
+        <tr><td class="col-name">max_export_mb</td><td class="col-type">integer</td><td class="col-note">default 500</td></tr>
+        <tr><td class="col-name">updated_at</td><td class="col-type">timestamptz</td><td class="col-note"></td></tr>
+      </table>
+    </div>
+
+  </div><!-- /tables-grid -->
+</div><!-- /db-section geo_meta -->
+
+
+<!-- ═══════════════════════════════════════════════════════════ -->
+<!-- GEO_FEATURES                                                -->
+<!-- ═══════════════════════════════════════════════════════════ -->
+<div class="db-section">
+  <div class="db-header">
+    <span class="db-badge badge-feat">geo_features</span>
+    <span class="db-title">Features database</span>
+    <span class="db-port">:5433 (direct, no pgbouncer)</span>
+  </div>
+
+  <div class="partition-note">
+    <strong>Partitioned table — HASH(layer_id) → 32 partitions</strong><br>
+    Physical tables: <code>features_p0</code> … <code>features_p31</code>. Postgres routes each row automatically.<br>
+    <strong>Every query MUST include <code>layer_id</code> in the WHERE clause</strong> for partition pruning.
+    Without it Postgres scans all 32 partitions (full table scan).
+  </div>
+
+  <div class="tables-grid">
+    <div class="table-card">
+      <div class="card-header">
+        <span class="table-name">features</span>
+        <span class="table-tag tag-part">partitioned × 32</span>
+      </div>
+      <div class="card-desc">All vector geometries. Optimistic locking via version column. Soft-deleted — never hard DELETEd (Argo needs deleted IDs for sync delta).</div>
+      <table class="cols">
+        <tr><td class="col-name pk"><span class="badge-pk">PK</span>id</td><td class="col-type">bigserial</td><td class="col-note">auto-incrementing</td></tr>
+        <tr><td class="col-name pk"><span class="badge-pk">PK</span>layer_id</td><td class="col-type">uuid</td><td class="col-note">partition key — always required in WHERE</td></tr>
+        <tr><td class="col-name">geom</td><td class="col-type">geometry(GEOMETRY, 4326)</td><td class="col-note">ST_MakeValid on insert</td></tr>
+        <tr><td class="col-name">properties</td><td class="col-type">jsonb</td><td class="col-note">validated against layer_schema</td></tr>
+        <tr><td class="col-name">version</td><td class="col-type">integer</td><td class="col-note">increments on every update; basis for optimistic locking</td></tr>
+        <tr><td class="col-name">created_by</td><td class="col-type">varchar</td><td class="col-note">user email</td></tr>
+        <tr><td class="col-name">updated_by</td><td class="col-type">varchar</td><td class="col-note">user email</td></tr>
+        <tr><td class="col-name"><span class="badge-soft">SOFT</span>deleted_at</td><td class="col-type">timestamptz</td><td class="col-note"><span class="badge-opt">nullable</span> — never hard deleted</td></tr>
+        <tr><td class="col-name">deleted_by</td><td class="col-type">varchar</td><td class="col-note"><span class="badge-opt">nullable</span></td></tr>
+        <tr><td class="col-name">created_at / updated_at</td><td class="col-type">timestamptz</td><td class="col-note"></td></tr>
+      </table>
+    </div>
+  </div>
+</div>
+
+
+<!-- ═══════════════════════════════════════════════════════════ -->
+<!-- KEY RELATIONSHIPS                                           -->
+<!-- ═══════════════════════════════════════════════════════════ -->
+<div class="section-title">Key Relationships</div>
+
+<div class="rel-grid">
+
+  <div class="rel-card">
+    <div class="rel-header">geo_databases</div>
+    <div class="rel-line"><span class="rel-arrow">→</span><span>has many <span class="rel-target">group_layers</span> (folder tree)</span></div>
+    <div class="rel-line"><span class="rel-arrow">→</span><span>has many <span class="rel-target">layers</span></span></div>
+    <div class="rel-line"><span class="rel-arrow">→</span><span>has many <span class="rel-target">raster_catalog</span></span></div>
+    <div class="rel-line"><span class="rel-arrow">→</span><span>has many <span class="rel-target">permissions</span> (database-level ACL)</span></div>
+  </div>
+
+  <div class="rel-card">
+    <div class="rel-header">group_layers</div>
+    <div class="rel-line"><span class="rel-arrow">→</span><span>self-references via <span class="rel-target">parent_id</span> (tree)</span></div>
+    <div class="rel-line"><span class="rel-arrow">→</span><span>has many <span class="rel-target">layers</span></span></div>
+    <div class="rel-line"><span class="rel-arrow">→</span><span>has many <span class="rel-target">permissions</span> (folder-level ACL)</span></div>
+  </div>
+
+  <div class="rel-card">
+    <div class="rel-header">layers</div>
+    <div class="rel-line"><span class="rel-arrow">→</span><span>has one <span class="rel-target">layer_schema</span></span></div>
+    <div class="rel-line"><span class="rel-arrow">→</span><span>has many <span class="rel-target">layer_styles</span></span></div>
+    <div class="rel-line"><span class="rel-arrow">→</span><span>has many <span class="rel-target">layer_owners</span></span></div>
+    <div class="rel-line"><span class="rel-arrow">→</span><span>has many <span class="rel-target">layer_events</span></span></div>
+    <div class="rel-line"><span class="rel-arrow">→</span><span>has many <span class="rel-target">permissions</span> (layer-level ACL)</span></div>
+    <div class="rel-line"><span class="rel-arrow">→</span><span>has many <span class="rel-target">features</span> (in geo_features DB)</span></div>
+    <div class="rel-line"><span class="rel-arrow">→</span><span>has many <span class="rel-target">sync_snapshots / sync_conflicts</span></span></div>
+  </div>
+
+  <div class="rel-card">
+    <div class="rel-header">ms_groups (custom)</div>
+    <div class="rel-line"><span class="rel-arrow">→</span><span>has many <span class="rel-target">custom_group_members</span> (users)</span></div>
+    <div class="rel-line"><span class="rel-arrow">→</span><span>has many <span class="rel-target">custom_group_ms_links</span> (MS Entra IDs)</span></div>
+    <div class="rel-line"><span class="rel-arrow">→</span><span>referenced by <span class="rel-target">permissions.ms_group_id</span></span></div>
+  </div>
+
+  <div class="rel-card">
+    <div class="rel-header">permissions (ACL)</div>
+    <div class="rel-line"><span class="rel-arrow">→</span><span>principal: <span class="rel-target">ms_user_id</span> OR <span class="rel-target">ms_group_id</span></span></div>
+    <div class="rel-line"><span class="rel-arrow">→</span><span>resource: <span class="rel-target">database_id</span> OR <span class="rel-target">group_layer_id</span> OR <span class="rel-target">layer_id</span></span></div>
+    <div class="rel-line"><span class="rel-arrow">→</span><span>role: → <span class="rel-target">roles</span></span></div>
+    <div class="rel-line"><span class="rel-arrow">→</span><span>resolved by PostgreSQL function <span class="rel-target">can_user_do()</span> walking up the hierarchy</span></div>
+  </div>
+
+  <div class="rel-card">
+    <div class="rel-header">sync flow</div>
+    <div class="rel-line"><span class="rel-arrow">1</span><span><span class="rel-target">sync_snapshots</span> — Argo downloads, records timestamp</span></div>
+    <div class="rel-line"><span class="rel-arrow">2</span><span><span class="rel-target">features.updated_at &gt; snapshotted_at</span> → delta</span></div>
+    <div class="rel-line"><span class="rel-arrow">3</span><span>Push: <code>WHERE version = client_version</code> → 0 rows → <span class="rel-target">sync_conflicts</span></span></div>
+    <div class="rel-line"><span class="rel-arrow">4</span><span>Non-conflict failures → <span class="rel-target">failed_syncs</span></span></div>
+  </div>
+
+</div><!-- /rel-grid -->
+
+<p style="margin-top: 40px; font-size: 11px; color: #334155; text-align: right;">
+  Generated 2026-04-16 &nbsp;·&nbsp; geo-platform/docs/db_design.html
+</p>
+
+</body>
+</html>
