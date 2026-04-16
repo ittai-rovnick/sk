@@ -1,15 +1,32 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { useNavigate } from "react-router-dom";
-import { Card, Form, Input, Button, Typography, Alert } from "antd";
+import { Card, Form, Input, Button, Typography, Alert, Spin } from "antd";
 import { UserOutlined } from "@ant-design/icons";
+import client from "../api/client";
 import { auth } from "../api/auth";
 import { useAuth } from "../auth/AuthContext";
+import type { User } from "../types";
 
 export function LoginPage() {
   const navigate = useNavigate();
   const { setAuth } = useAuth();
   const [loading, setLoading] = useState(false);
+  const [autoLoading, setAutoLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+
+  // On mount: try to detect the OS user and log in automatically
+  useEffect(() => {
+    client
+      .get<{ token: string; user: User }>("/auth/auto-login")
+      .then(({ data }) => {
+        setAuth(data.token, data.user);
+        navigate("/databases", { replace: true });
+      })
+      .catch(() => {
+        // No OS match — show the manual form
+        setAutoLoading(false);
+      });
+  }, []);
 
   async function onFinish({ username }: { username: string }) {
     setLoading(true);
@@ -23,6 +40,14 @@ export function LoginPage() {
     } finally {
       setLoading(false);
     }
+  }
+
+  if (autoLoading) {
+    return (
+      <div style={{ minHeight: "100vh", display: "flex", alignItems: "center", justifyContent: "center" }}>
+        <Spin size="large" tip="Signing you in…" />
+      </div>
+    );
   }
 
   return (
