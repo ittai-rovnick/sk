@@ -1,7 +1,7 @@
 from datetime import datetime, timezone, timedelta
 from jose import jwt, JWTError
 from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy import select, update
+from sqlalchemy import select, update, text
 from app.config import settings
 from app.auth.models import RequestContext
 from app.models.users import User
@@ -50,10 +50,31 @@ async def validate_token(token: str, db: AsyncSession) -> RequestContext | None:
 
 
 async def _resolve_custom_group_ids(db: AsyncSession, user_id) -> list[str]:
-    """Return ms_group_id strings for all custom groups this user belongs to directly."""
-    rows = await db.execute(
-        select(MsGroup.ms_group_id)
-        .join(CustomGroupMember, CustomGroupMember.group_id == MsGroup.id)
-        .where(CustomGroupMember.user_id == user_id)
+    """Return ms_group_id strings for all custom groups this user belongs to,
+    including every ancestor of each directly-joined group.
+
+    Inheritance is child→parent: if the user is a member of group G and G has
+    parent P, the user effectively belongs to P (and P's parent, etc.).
+    Depth is capped at 16 to protect against runaway recursion if a cycle ever
+    slipped past the CHECK constraint and cycle-prevention logic.
+    """
+    result = await db.execute(
+        text("""
+        WITH RECURSIVE direct AS (
+            SELECT group_id AS id FROM custom_group_members WHERE user_id = :uid
+        ),
+        ancestors(id, depth) AS (
+            SELECT id, 0 FROM direct
+            UNION
+            SELECT g.parent_group_id, a.depth + 1
+            FROM ms_groups g
+            JOIN ancestors a ON g.id = a.id
+            WHERE g.parent_group_id IS NOT NULL AND a.depth < 16
+        )
+        SELECT DISTINCT g.ms_group_id
+        FROM ms_groups g
+        JOIN ancestors a ON g.id = a.id
+        """),
+        {"uid": user_id},
     )
-    return [row[0] for row in rows.all()]
+    return [row[0] for row in result.all()]

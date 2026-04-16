@@ -4,7 +4,7 @@ from typing import List, Optional
 from fastapi import APIRouter, Depends, HTTPException, status
 from pydantic import BaseModel
 from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy import select, delete
+from sqlalchemy import select, text
 
 from app.dependencies import get_meta_db, get_current_user
 from app.auth.models import RequestContext
@@ -14,17 +14,24 @@ from app.config import settings
 
 router = APIRouter(prefix="/groups", tags=["groups"])
 
+MAX_HIERARCHY_DEPTH = 16
+
 
 # ── Schemas ────────────────────────────────────────────────────────────────────
 
 class GroupCreate(BaseModel):
     display_name: str
     description: Optional[str] = None
+    parent_group_id: Optional[uuid.UUID] = None
 
 
 class GroupUpdate(BaseModel):
     display_name: Optional[str] = None
     description: Optional[str] = None
+
+
+class GroupMove(BaseModel):
+    parent_group_id: Optional[uuid.UUID] = None  # null = move to root
 
 
 class GroupResponse(BaseModel):
@@ -33,10 +40,23 @@ class GroupResponse(BaseModel):
     display_name: Optional[str]
     description: Optional[str]
     is_custom: bool
+    parent_group_id: Optional[uuid.UUID]
     synced_at: Optional[datetime]
     created_at: datetime
 
     model_config = {"from_attributes": True}
+
+
+class GroupTreeNode(BaseModel):
+    id: uuid.UUID
+    ms_group_id: str
+    display_name: Optional[str]
+    description: Optional[str]
+    parent_group_id: Optional[uuid.UUID]
+    children: List["GroupTreeNode"] = []
+
+
+GroupTreeNode.model_rebuild()
 
 
 class MemberResponse(BaseModel):
@@ -70,7 +90,46 @@ class MsGroupSearchResult(BaseModel):
     ms_group_id: str
     display_name: Optional[str]
     description: Optional[str]
-    linked_to_groups: List[uuid.UUID]  # custom group IDs this MS group is already linked to
+    linked_to_groups: List[uuid.UUID]
+
+
+# ── Helpers ────────────────────────────────────────────────────────────────────
+
+async def _would_create_cycle(
+    db: AsyncSession, group_id: uuid.UUID, new_parent_id: uuid.UUID
+) -> bool:
+    """True if setting group_id.parent = new_parent_id would create a cycle.
+
+    We walk up from new_parent_id; if we ever see group_id, that's a cycle.
+    Also returns True if depth exceeds MAX_HIERARCHY_DEPTH (defensive cap).
+    """
+    if group_id == new_parent_id:
+        return True
+    result = await db.execute(
+        text("""
+        WITH RECURSIVE chain(id, parent_group_id, depth) AS (
+            SELECT id, parent_group_id, 0 FROM ms_groups WHERE id = :start
+            UNION ALL
+            SELECT g.id, g.parent_group_id, c.depth + 1
+            FROM ms_groups g
+            JOIN chain c ON g.id = c.parent_group_id
+            WHERE c.depth < :maxdepth
+        )
+        SELECT 1 FROM chain WHERE id = :target LIMIT 1
+        """),
+        {"start": new_parent_id, "target": group_id, "maxdepth": MAX_HIERARCHY_DEPTH},
+    )
+    return result.scalar_one_or_none() is not None
+
+
+async def _get_parent_or_404(db: AsyncSession, parent_id: uuid.UUID) -> MsGroup:
+    result = await db.execute(select(MsGroup).where(MsGroup.id == parent_id))
+    parent = result.scalar_one_or_none()
+    if not parent:
+        raise HTTPException(status_code=404, detail="Parent group not found")
+    if not parent.is_custom:
+        raise HTTPException(status_code=400, detail="Parent must be a custom group")
+    return parent
 
 
 # ── Custom groups CRUD ─────────────────────────────────────────────────────────
@@ -80,11 +139,43 @@ async def list_groups(
     db: AsyncSession = Depends(get_meta_db),
     ctx: RequestContext = Depends(get_current_user),
 ):
-    """List all custom groups."""
+    """List all custom groups (flat)."""
     result = await db.execute(
         select(MsGroup).where(MsGroup.is_custom == True).order_by(MsGroup.display_name)
     )
     return result.scalars().all()
+
+
+@router.get("/tree", response_model=List[GroupTreeNode])
+async def get_group_tree(
+    db: AsyncSession = Depends(get_meta_db),
+    ctx: RequestContext = Depends(get_current_user),
+):
+    """Return all custom groups as a forest of trees."""
+    result = await db.execute(
+        select(MsGroup).where(MsGroup.is_custom == True).order_by(MsGroup.display_name)
+    )
+    all_groups = result.scalars().all()
+
+    nodes: dict[uuid.UUID, GroupTreeNode] = {
+        g.id: GroupTreeNode(
+            id=g.id,
+            ms_group_id=g.ms_group_id,
+            display_name=g.display_name,
+            description=g.description,
+            parent_group_id=g.parent_group_id,
+            children=[],
+        )
+        for g in all_groups
+    }
+    roots: list[GroupTreeNode] = []
+    for g in all_groups:
+        node = nodes[g.id]
+        if g.parent_group_id and g.parent_group_id in nodes:
+            nodes[g.parent_group_id].children.append(node)
+        else:
+            roots.append(node)
+    return roots
 
 
 @router.post("", response_model=GroupResponse, status_code=status.HTTP_201_CREATED)
@@ -93,9 +184,12 @@ async def create_group(
     db: AsyncSession = Depends(get_meta_db),
     ctx: RequestContext = Depends(get_current_user),
 ):
-    """Create a custom group. Permissions are assigned to custom groups."""
+    """Create a custom group, optionally nested under a parent."""
     if not ctx.is_superadmin:
         raise HTTPException(status_code=403, detail="Superadmin required")
+
+    if body.parent_group_id is not None:
+        await _get_parent_or_404(db, body.parent_group_id)
 
     internal_id = f"custom:{uuid.uuid4()}"
     obj = MsGroup(
@@ -103,6 +197,7 @@ async def create_group(
         display_name=body.display_name,
         description=body.description,
         is_custom=True,
+        parent_group_id=body.parent_group_id,
     )
     db.add(obj)
     await db.commit()
@@ -145,12 +240,101 @@ async def update_group(
     return obj
 
 
+@router.patch("/{group_id}/move", response_model=GroupResponse)
+async def move_group(
+    group_id: uuid.UUID,
+    body: GroupMove,
+    db: AsyncSession = Depends(get_meta_db),
+    ctx: RequestContext = Depends(get_current_user),
+):
+    """Re-parent a group. Pass parent_group_id=null to move it to the root."""
+    if not ctx.is_superadmin:
+        raise HTTPException(status_code=403, detail="Superadmin required")
+
+    result = await db.execute(select(MsGroup).where(MsGroup.id == group_id))
+    obj = result.scalar_one_or_none()
+    if not obj:
+        raise HTTPException(status_code=404, detail="Group not found")
+    if not obj.is_custom:
+        raise HTTPException(status_code=400, detail="Can only move custom groups")
+
+    if body.parent_group_id is not None:
+        await _get_parent_or_404(db, body.parent_group_id)
+        if await _would_create_cycle(db, group_id, body.parent_group_id):
+            raise HTTPException(
+                status_code=400,
+                detail="Move would create a cycle (target is a descendant of this group)",
+            )
+
+    obj.parent_group_id = body.parent_group_id
+    await db.commit()
+    await db.refresh(obj)
+    return obj
+
+
+@router.get("/{group_id}/ancestors", response_model=List[GroupResponse])
+async def get_ancestors(
+    group_id: uuid.UUID,
+    db: AsyncSession = Depends(get_meta_db),
+    ctx: RequestContext = Depends(get_current_user),
+):
+    """Return all ancestors of a group (nearest parent first, up to the root)."""
+    result = await db.execute(
+        text("""
+        WITH RECURSIVE chain(id, parent_group_id, depth) AS (
+            SELECT id, parent_group_id, 0 FROM ms_groups WHERE id = :gid
+            UNION ALL
+            SELECT g.id, g.parent_group_id, c.depth + 1
+            FROM ms_groups g
+            JOIN chain c ON g.id = c.parent_group_id
+            WHERE c.depth < :maxdepth
+        )
+        SELECT g.* FROM ms_groups g
+        JOIN chain c ON g.id = c.id
+        WHERE c.depth > 0
+        ORDER BY c.depth
+        """),
+        {"gid": group_id, "maxdepth": MAX_HIERARCHY_DEPTH},
+    )
+    rows = result.mappings().all()
+    return [GroupResponse(**dict(r)) for r in rows]
+
+
+@router.get("/{group_id}/descendants", response_model=List[GroupResponse])
+async def get_descendants(
+    group_id: uuid.UUID,
+    db: AsyncSession = Depends(get_meta_db),
+    ctx: RequestContext = Depends(get_current_user),
+):
+    """Return all descendant groups (children, grandchildren, etc.)."""
+    result = await db.execute(
+        text("""
+        WITH RECURSIVE subtree(id, depth) AS (
+            SELECT id, 0 FROM ms_groups WHERE id = :gid
+            UNION ALL
+            SELECT g.id, s.depth + 1
+            FROM ms_groups g
+            JOIN subtree s ON g.parent_group_id = s.id
+            WHERE s.depth < :maxdepth
+        )
+        SELECT g.* FROM ms_groups g
+        JOIN subtree s ON g.id = s.id
+        WHERE s.depth > 0
+        ORDER BY g.display_name
+        """),
+        {"gid": group_id, "maxdepth": MAX_HIERARCHY_DEPTH},
+    )
+    rows = result.mappings().all()
+    return [GroupResponse(**dict(r)) for r in rows]
+
+
 @router.delete("/{group_id}", status_code=status.HTTP_204_NO_CONTENT)
 async def delete_group(
     group_id: uuid.UUID,
     db: AsyncSession = Depends(get_meta_db),
     ctx: RequestContext = Depends(get_current_user),
 ):
+    """Delete a custom group. Children are promoted to roots (ON DELETE SET NULL)."""
     if not ctx.is_superadmin:
         raise HTTPException(status_code=403, detail="Superadmin required")
     result = await db.execute(select(MsGroup).where(MsGroup.id == group_id))
@@ -256,7 +440,6 @@ async def remove_member(
 
 
 # ── Microsoft group links ──────────────────────────────────────────────────────
-# Link MS Entra groups to a custom group so their members inherit the group's permissions.
 
 @router.get("/{group_id}/ms-links", response_model=List[MsLinkResponse])
 async def list_ms_links(
@@ -264,7 +447,6 @@ async def list_ms_links(
     db: AsyncSession = Depends(get_meta_db),
     ctx: RequestContext = Depends(get_current_user),
 ):
-    """List all Microsoft groups linked to this custom group."""
     result = await db.execute(select(MsGroup).where(MsGroup.id == group_id))
     if not result.scalar_one_or_none():
         raise HTTPException(status_code=404, detail="Group not found")
@@ -283,9 +465,6 @@ async def add_ms_link(
     db: AsyncSession = Depends(get_meta_db),
     ctx: RequestContext = Depends(get_current_user),
 ):
-    """Link a Microsoft Entra group to a custom group.
-    All members of the MS group will inherit this custom group's permissions.
-    """
     if not ctx.is_superadmin:
         raise HTTPException(status_code=403, detail="Superadmin required")
 
@@ -323,7 +502,6 @@ async def remove_ms_link(
     db: AsyncSession = Depends(get_meta_db),
     ctx: RequestContext = Depends(get_current_user),
 ):
-    """Unlink a Microsoft Entra group from a custom group."""
     if not ctx.is_superadmin:
         raise HTTPException(status_code=403, detail="Superadmin required")
     result = await db.execute(
@@ -347,11 +525,6 @@ async def search_ms_groups(
     db: AsyncSession = Depends(get_meta_db),
     ctx: RequestContext = Depends(get_current_user),
 ):
-    """
-    Search Microsoft Entra for groups by name.
-    Returns matching groups and which custom groups they are already linked to.
-    Returns empty list in DEV_MODE (no MS credentials available).
-    """
     if not ctx.is_superadmin:
         raise HTTPException(status_code=403, detail="Superadmin required")
 
@@ -382,7 +555,6 @@ async def search_ms_groups(
         graph_resp.raise_for_status()
         ms_groups = graph_resp.json().get("value", [])
 
-    # Which custom groups is each MS group already linked to?
     ms_ids = [g["id"] for g in ms_groups]
     existing = await db.execute(
         select(CustomGroupMsLink.ms_group_id, CustomGroupMsLink.custom_group_id)
