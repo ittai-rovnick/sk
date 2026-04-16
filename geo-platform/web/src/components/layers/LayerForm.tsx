@@ -8,15 +8,6 @@ interface Props {
   loading?: boolean;
 }
 
-const GEOMETRY_TYPES = [
-  "POINT",
-  "LINESTRING",
-  "POLYGON",
-  "MULTIPOINT",
-  "MULTILINESTRING",
-  "MULTIPOLYGON",
-];
-
 export function LayerForm({ initialValues, onSubmit, onCancel, loading }: Props) {
   const [form] = Form.useForm();
 
@@ -33,10 +24,6 @@ export function LayerForm({ initialValues, onSubmit, onCancel, loading }: Props)
 
       <Form.Item name="description" label="Description">
         <Input.TextArea rows={2} />
-      </Form.Item>
-
-      <Form.Item name="geometry_type" label="Geometry type" rules={[{ required: true }]}>
-        <Select options={GEOMETRY_TYPES.map((t) => ({ value: t, label: t }))} />
       </Form.Item>
 
       <Form.Item name="tags" label="Tags">

@@ -4,6 +4,12 @@ from typing import Any
 from pydantic import BaseModel
 
 
+ALLOWED_GEOMETRY_TYPES: frozenset[str] = frozenset({
+    "POINT", "LINESTRING", "POLYGON",
+    "MULTIPOINT", "MULTILINESTRING", "MULTIPOLYGON",
+})
+
+
 class GroupLayerCreate(BaseModel):
     database_id: uuid.UUID
     parent_id: uuid.UUID | None = None
@@ -39,7 +45,6 @@ class LayerCreate(BaseModel):
     group_layer_id: uuid.UUID | None = None
     name: str
     description: str | None = None
-    geometry_type: str
     srid: int = 4326
     tags: list[str] = []
     sort_order: int = 0
@@ -60,7 +65,7 @@ class LayerResponse(BaseModel):
     group_layer_id: uuid.UUID | None
     name: str
     description: str | None
-    geometry_type: str
+    geometry_types: list[str]
     srid: int
     tags: list[str]
     status: str

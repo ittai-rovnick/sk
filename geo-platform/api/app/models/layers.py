@@ -1,7 +1,7 @@
 import uuid
 from datetime import datetime
 from sqlalchemy import (
-    Boolean, DateTime, ForeignKey, Integer, String, ARRAY, Text, func
+    Boolean, DateTime, ForeignKey, Integer, String, ARRAY, Text, func, text
 )
 from sqlalchemy.dialects.postgresql import UUID, JSONB
 from sqlalchemy.orm import Mapped, mapped_column
@@ -48,7 +48,9 @@ class Layer(Base):
     )
     name: Mapped[str] = mapped_column(String, nullable=False)
     description: Mapped[str | None] = mapped_column(String)
-    geometry_type: Mapped[str] = mapped_column(String, nullable=False)
+    geometry_types: Mapped[list[str]] = mapped_column(
+        ARRAY(String), nullable=False, server_default=text("'{}'")
+    )
     srid: Mapped[int] = mapped_column(Integer, nullable=False, default=4326)
     tags: Mapped[list[str]] = mapped_column(ARRAY(String), nullable=False, default=list)
     status: Mapped[str] = mapped_column(String, nullable=False, default="draft")

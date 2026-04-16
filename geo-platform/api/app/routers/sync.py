@@ -11,12 +11,14 @@ from app.auth.models import RequestContext
 from app.auth.permissions import can_user_do
 from app.models.layers import Layer
 from app.models.audit import SyncSnapshot, SyncConflict, FailedSync
+from app.schemas.layers import ALLOWED_GEOMETRY_TYPES
 from app.schemas.sync import (
     SnapshotRequest, SnapshotResponse,
     DeltaResponse,
     PushRequest, PushResponse, ConflictInfo, FailedInfo,
     SyncStatusResponse,
 )
+from app.services.layer_geometry import refresh_layer_geometry_types
 from app.db.session import shard_sessions
 
 router = APIRouter(prefix="/sync", tags=["sync"])
@@ -44,20 +46,33 @@ async def create_snapshot(
     features_by_layer: dict[str, list[dict[str, Any]]] = {}
     expires_at = datetime.now(timezone.utc) + timedelta(hours=SNAPSHOT_TTL_HOURS)
 
+    gt: str | None = None
+    if body.geometry_type is not None:
+        gt = body.geometry_type.upper()
+        if gt not in ALLOWED_GEOMETRY_TYPES:
+            raise HTTPException(status_code=400, detail=f"Unknown geometry_type: {body.geometry_type}")
+
     for layer_id in body.layer_ids:
         layer = await _get_layer(meta_db, layer_id)
         if not await can_user_do(meta_db, ctx, str(layer_id), "read"):
             continue
 
-        sql = text("""
+        extra = ""
+        sql_params: dict[str, Any] = {"layer_id": str(layer_id)}
+        if gt is not None:
+            extra = " AND UPPER(REPLACE(ST_GeometryType(geom), 'ST_', '')) = :geom_type"
+            sql_params["geom_type"] = gt
+
+        sql = text(f"""
             SELECT id, layer_id, ST_AsGeoJSON(geom)::jsonb AS geom,
                    properties, version, created_by, updated_by, created_at, updated_at
             FROM features
             WHERE layer_id = CAST(:layer_id AS uuid) AND deleted_at IS NULL
+            {extra}
         """)
 
         async with shard_sessions[layer.shard_id]() as shard_db:
-            result = await shard_db.execute(sql, {"layer_id": str(layer_id)})
+            result = await shard_db.execute(sql, sql_params)
             rows = result.mappings().all()
 
         feature_list = []
@@ -99,12 +114,19 @@ async def create_snapshot(
 async def get_delta(
     layer_id: uuid.UUID,
     device_id: str,
+    geometry_type: str | None = None,
     meta_db: AsyncSession = Depends(get_meta_db),
     ctx: RequestContext = Depends(get_current_user),
 ):
     layer = await _get_layer(meta_db, layer_id)
     if not await can_user_do(meta_db, ctx, str(layer_id), "read"):
         raise HTTPException(status_code=403, detail="Read permission required")
+
+    gt: str | None = None
+    if geometry_type is not None:
+        gt = geometry_type.upper()
+        if gt not in ALLOWED_GEOMETRY_TYPES:
+            raise HTTPException(status_code=400, detail=f"Unknown geometry_type: {geometry_type}")
 
     # Find most recent snapshot for this device + layer
     result = await meta_db.execute(
@@ -123,21 +145,28 @@ async def get_delta(
     if snap.expires_at < datetime.now(timezone.utc):
         raise HTTPException(status_code=410, detail="Snapshot expired — request a new snapshot")
 
-    updated_sql = text("""
+    extra = ""
+    if gt is not None:
+        extra = " AND UPPER(REPLACE(ST_GeometryType(geom), 'ST_', '')) = :geom_type"
+    updated_sql = text(f"""
         SELECT id, layer_id, ST_AsGeoJSON(geom)::jsonb AS geom,
                properties, version, created_by, updated_by, created_at, updated_at
         FROM features
         WHERE layer_id = CAST(:layer_id AS uuid)
           AND deleted_at IS NULL
           AND updated_at > :since
+          {extra}
     """)
-    deleted_sql = text("""
+    deleted_sql = text(f"""
         SELECT id FROM features
         WHERE layer_id = CAST(:layer_id AS uuid)
           AND deleted_at IS NOT NULL
           AND deleted_at > :since
+          {extra}
     """)
     params = {"layer_id": str(layer_id), "since": snap.snapshotted_at}
+    if gt is not None:
+        params["geom_type"] = gt
 
     async with shard_sessions[layer.shard_id]() as shard_db:
         updated_rows = (await shard_db.execute(updated_sql, params)).mappings().all()
@@ -281,6 +310,7 @@ async def push_edits(
                     failed.append(FailedInfo(feature_id=edit.feature_id, reason=str(exc)))
 
             await shard_db.commit()
+            await refresh_layer_geometry_types(layer_id, shard_db, meta_db)
 
     await meta_db.commit()
     return PushResponse(succeeded=succeeded, conflicts=conflicts, failed=failed)

@@ -11,6 +11,8 @@ from app.auth.models import RequestContext
 from app.auth.permissions import can_user_do
 from app.models.layers import Layer
 from app.schemas.features import FeatureCreate, FeatureUpdate, FeatureResponse, BboxQuery
+from app.schemas.layers import ALLOWED_GEOMETRY_TYPES
+from app.services.layer_geometry import refresh_layer_geometry_types
 from app.db.session import shard_sessions
 
 router = APIRouter(prefix="/layers", tags=["features"])
@@ -49,6 +51,7 @@ async def list_features(
     min_lat: Optional[float] = None,
     max_lon: Optional[float] = None,
     max_lat: Optional[float] = None,
+    geometry_type: Optional[str] = None,
     meta_db: AsyncSession = Depends(get_meta_db),
     ctx: RequestContext = Depends(get_current_user),
 ):
@@ -56,22 +59,28 @@ async def list_features(
     if not await can_user_do(meta_db, ctx, str(layer_id), "read"):
         raise HTTPException(status_code=403, detail="Read permission required")
 
-    bbox_filter = ""
+    extra_filters = ""
     params: dict[str, Any] = {
         "layer_id": str(layer_id),
         "limit": limit,
         "offset": offset,
     }
     if all(v is not None for v in [min_lon, min_lat, max_lon, max_lat]):
-        bbox_filter = "AND ST_Intersects(geom, ST_MakeEnvelope(:min_lon, :min_lat, :max_lon, :max_lat, 4326))"
+        extra_filters += " AND ST_Intersects(geom, ST_MakeEnvelope(:min_lon, :min_lat, :max_lon, :max_lat, 4326))"
         params.update({"min_lon": min_lon, "min_lat": min_lat, "max_lon": max_lon, "max_lat": max_lat})
+    if geometry_type is not None:
+        gt = geometry_type.upper()
+        if gt not in ALLOWED_GEOMETRY_TYPES:
+            raise HTTPException(status_code=400, detail=f"Unknown geometry_type: {geometry_type}")
+        extra_filters += " AND UPPER(REPLACE(ST_GeometryType(geom), 'ST_', '')) = :geom_type"
+        params["geom_type"] = gt
 
     sql = text(f"""
         SELECT id, layer_id, ST_AsGeoJSON(geom)::jsonb AS geom,
                properties, version, created_by, updated_by, created_at, updated_at
         FROM features
         WHERE layer_id = CAST(:layer_id AS uuid) AND deleted_at IS NULL
-        {bbox_filter}
+        {extra_filters}
         ORDER BY id
         LIMIT :limit OFFSET :offset
     """)
@@ -121,6 +130,7 @@ async def create_feature(
         })
         await shard_db.commit()
         row = result.mappings().one()
+        await refresh_layer_geometry_types(layer_id, shard_db, meta_db)
 
     return _row_to_feature(row)
 
@@ -193,6 +203,8 @@ async def update_feature(
         result = await shard_db.execute(sql, params)
         await shard_db.commit()
         row = result.mappings().one_or_none()
+        if row and body.geom is not None:
+            await refresh_layer_geometry_types(layer_id, shard_db, meta_db)
 
     if not row:
         raise HTTPException(status_code=409, detail="Version conflict or feature not found")
@@ -227,3 +239,4 @@ async def delete_feature(
         await shard_db.commit()
         if result.rowcount == 0:
             raise HTTPException(status_code=404, detail="Feature not found")
+        await refresh_layer_geometry_types(layer_id, shard_db, meta_db)

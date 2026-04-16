@@ -7,6 +7,7 @@ from pydantic import BaseModel
 class SnapshotRequest(BaseModel):
     layer_ids: list[uuid.UUID]
     device_id: str
+    geometry_type: str | None = None
 
 
 class SnapshotResponse(BaseModel):

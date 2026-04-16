@@ -1,3 +1,8 @@
+export const GEOMETRY_TYPES = [
+  "POINT", "LINESTRING", "POLYGON",
+  "MULTIPOINT", "MULTILINESTRING", "MULTIPOLYGON",
+] as const;
+
 export interface User {
   id: string;
   ms_object_id: string;
@@ -37,7 +42,7 @@ export interface Layer {
   group_layer_id: string | null;
   name: string;
   description: string | null;
-  geometry_type: string;
+  geometry_types: string[];
   srid: number;
   tags: string[];
   status: "draft" | "review" | "published";
