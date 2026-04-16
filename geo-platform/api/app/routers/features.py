@@ -70,7 +70,7 @@ async def list_features(
         SELECT id, layer_id, ST_AsGeoJSON(geom)::jsonb AS geom,
                properties, version, created_by, updated_by, created_at, updated_at
         FROM features
-        WHERE layer_id = :layer_id::uuid AND deleted_at IS NULL
+        WHERE layer_id = CAST(:layer_id AS uuid) AND deleted_at IS NULL
         {bbox_filter}
         ORDER BY id
         LIMIT :limit OFFSET :offset
@@ -99,7 +99,7 @@ async def create_feature(
     sql = text("""
         INSERT INTO features (layer_id, geom, properties, version, created_by, updated_by, created_at, updated_at)
         VALUES (
-            :layer_id::uuid,
+            CAST(:layer_id AS uuid),
             ST_SetSRID(ST_MakeValid(ST_GeomFromGeoJSON(:geom)), 4326),
             :properties,
             1,
@@ -140,7 +140,7 @@ async def get_feature(
         SELECT id, layer_id, ST_AsGeoJSON(geom)::jsonb AS geom,
                properties, version, created_by, updated_by, created_at, updated_at
         FROM features
-        WHERE id = :id AND layer_id = :layer_id::uuid AND deleted_at IS NULL
+        WHERE id = :id AND layer_id = CAST(:layer_id AS uuid) AND deleted_at IS NULL
     """)
 
     async with shard_sessions[layer.shard_id]() as shard_db:
@@ -184,7 +184,7 @@ async def update_feature(
     sql = text(f"""
         UPDATE features
         SET {', '.join(set_clauses)}
-        WHERE id = :id AND layer_id = :layer_id::uuid AND version = :expected_version AND deleted_at IS NULL
+        WHERE id = :id AND layer_id = CAST(:layer_id AS uuid) AND version = :expected_version AND deleted_at IS NULL
         RETURNING id, layer_id, ST_AsGeoJSON(geom)::jsonb AS geom,
                   properties, version, created_by, updated_by, created_at, updated_at
     """)
@@ -215,7 +215,7 @@ async def delete_feature(
     sql = text("""
         UPDATE features
         SET deleted_at = NOW(), deleted_by = :actor
-        WHERE id = :id AND layer_id = :layer_id::uuid AND deleted_at IS NULL
+        WHERE id = :id AND layer_id = CAST(:layer_id AS uuid) AND deleted_at IS NULL
     """)
 
     async with shard_sessions[layer.shard_id]() as shard_db:

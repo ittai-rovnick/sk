@@ -19,7 +19,7 @@ async def can_user_do(
 
     result = await db.execute(
         text(
-            "SELECT can_user_do(:ms_object_id, :ms_group_ids, :layer_id::uuid, :operation)"
+            "SELECT can_user_do(:ms_object_id, :ms_group_ids, CAST(:layer_id AS uuid), :operation)"
         ),
         {
             "ms_object_id": ctx.ms_object_id,

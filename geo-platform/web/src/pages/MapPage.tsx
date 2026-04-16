@@ -5,16 +5,17 @@ import {
 } from "antd";
 import {
   EyeOutlined, EyeInvisibleOutlined, EditOutlined,
-  SaveOutlined, CloseOutlined, PlusOutlined, DeleteOutlined,
+  SaveOutlined, CloseOutlined, PlusOutlined,
 } from "@ant-design/icons";
 import maplibregl from "maplibre-gl";
-import { TerraDraw, TerraDrawMapLibreGLAdapter } from "terra-draw";
 import {
+  TerraDraw,
   TerraDrawPointMode,
   TerraDrawLineStringMode,
   TerraDrawPolygonMode,
   TerraDrawSelectMode,
 } from "terra-draw";
+import { TerraDrawMapLibreGLAdapter } from "terra-draw-maplibre-gl-adapter";
 import "maplibre-gl/dist/maplibre-gl.css";
 import client from "../api/client";
 import type { GeoDatabase, Layer } from "../types";
@@ -49,9 +50,35 @@ const COLORS = [
 // ── Helpers ───────────────────────────────────────────────────────────────────
 
 function omitInternal(props: Record<string, unknown>): Record<string, unknown> {
-  const { _api_id, _api_version, ...rest } = props;
-  void _api_id; void _api_version;
+  const { _api_id, _api_version, mode, ...rest } = props;
+  void _api_id; void _api_version; void mode;
   return rest;
+}
+
+function geomToMode(type: GeoJSON.Geometry["type"]): "point" | "linestring" | "polygon" | null {
+  if (type === "Point") return "point";
+  if (type === "LineString") return "linestring";
+  if (type === "Polygon") return "polygon";
+  return null;
+}
+
+function toDrawFeatures(features: ApiFeature[]): import("terra-draw").GeoJSONStoreFeatures[] {
+  const out: import("terra-draw").GeoJSONStoreFeatures[] = [];
+  for (const f of features) {
+    const mode = geomToMode(f.geom.type);
+    if (!mode) continue; // terra-draw v1 only supports Point/LineString/Polygon
+    out.push({
+      type: "Feature",
+      geometry: f.geom as import("terra-draw").GeoJSONStoreGeometries,
+      properties: {
+        _api_id: f.id,
+        _api_version: f.version,
+        mode,
+        ...f.properties,
+      },
+    });
+  }
+  return out;
 }
 
 // ── Component ─────────────────────────────────────────────────────────────────
@@ -60,7 +87,6 @@ export function MapPage() {
   const mapContainer = useRef<HTMLDivElement>(null);
   const mapRef = useRef<maplibregl.Map | null>(null);
   const drawRef = useRef<TerraDraw | null>(null);
-  const mapReadyRef = useRef(false);
 
   const [databases, setDatabases] = useState<GeoDatabase[]>([]);
   const [selectedDb, setSelectedDb] = useState<string>("");
@@ -68,6 +94,7 @@ export function MapPage() {
   const [loadingLayers, setLoadingLayers] = useState(false);
   const [editingLayerId, setEditingLayerId] = useState<string | null>(null);
   const [drawMode, setDrawMode] = useState<DrawMode>("select");
+  const [mapReady, setMapReady] = useState(false);
   const [saving, setSaving] = useState(false);
   const [hasChanges, setHasChanges] = useState(false);
   const [newLayerOpen, setNewLayerOpen] = useState(false);
@@ -126,34 +153,62 @@ export function MapPage() {
 
     map.addControl(new maplibregl.NavigationControl(), "top-right");
 
-    map.on("load", () => {
-      const draw = new TerraDraw({
-        adapter: new TerraDrawMapLibreGLAdapter({ map }),
-        modes: [
-          new TerraDrawSelectMode({
-            flags: {
-              point: { feature: { draggable: true } },
-              linestring: {
-                feature: { draggable: true },
-                coordinates: { midpoints: true, draggable: true, deletable: true },
+    map.on("style.load", () => {
+      try {
+        const draw = new TerraDraw({
+          adapter: new TerraDrawMapLibreGLAdapter({ map }),
+          modes: [
+            new TerraDrawSelectMode({
+              flags: {
+                point: { feature: { draggable: true } },
+                linestring: {
+                  feature: {
+                    draggable: true,
+                    coordinates: { midpoints: true, draggable: true, deletable: true },
+                  },
+                },
+                polygon: {
+                  feature: {
+                    draggable: true,
+                    coordinates: { midpoints: true, draggable: true, deletable: true },
+                  },
+                },
               },
-              polygon: {
-                feature: { draggable: true },
-                coordinates: { midpoints: true, draggable: true, deletable: true },
+            }),
+            new TerraDrawPointMode({
+              styles: {
+                pointColor: "#ff0000",
+                pointWidth: 8,
+                pointOutlineColor: "#ffffff",
+                pointOutlineWidth: 2,
               },
-            },
-          }),
-          new TerraDrawPointMode(),
-          new TerraDrawLineStringMode(),
-          new TerraDrawPolygonMode(),
-        ],
-      });
+            }),
+            new TerraDrawLineStringMode({
+              styles: {
+                lineStringColor: "#ff0000",
+                lineStringWidth: 3,
+              },
+            }),
+            new TerraDrawPolygonMode({
+              styles: {
+                fillColor: "#ff0000",
+                fillOpacity: 0.3,
+                outlineColor: "#ff0000",
+                outlineWidth: 2,
+              },
+            }),
+          ],
+        });
 
-      draw.start();
-      draw.on("change", () => setHasChanges(true));
+        draw.start();
+        draw.on("change", () => setHasChanges(true));
 
-      drawRef.current = draw;
-      mapReadyRef.current = true;
+        drawRef.current = draw;
+        setMapReady(true);
+      } catch (err) {
+        console.error("Failed to initialize TerraDraw:", err);
+        message.error("Drawing tools failed to initialize — see console");
+      }
     });
 
     mapRef.current = map;
@@ -163,20 +218,20 @@ export function MapPage() {
       map.remove();
       mapRef.current = null;
       drawRef.current = null;
-      mapReadyRef.current = false;
+      setMapReady(false);
     };
   }, []);
 
   // ── Activate draw mode ──────────────────────────────────────────────────────
   useEffect(() => {
-    if (!drawRef.current || !editingLayerId) return;
+    if (!mapReady || !drawRef.current || !editingLayerId) return;
     drawRef.current.setMode(drawMode);
-  }, [drawMode, editingLayerId]);
+  }, [drawMode, editingLayerId, mapReady]);
 
   // ── Sync view layers on map ─────────────────────────────────────────────────
   const syncViewLayer = useCallback((ls: LayerState) => {
     const map = mapRef.current;
-    if (!map || !mapReadyRef.current) return;
+    if (!map || !mapReady) return;
     const sourceId = `layer-${ls.layer.id}`;
 
     if (!ls.visible || ls.layer.id === editingLayerId) {
@@ -218,12 +273,12 @@ export function MapPage() {
         paint: { "line-color": ls.color, "line-width": 1.5 },
       });
     }
-  }, [editingLayerId]);
+  }, [editingLayerId, mapReady]);
 
   useEffect(() => {
-    if (!mapReadyRef.current) return;
+    if (!mapReady) return;
     layerStates.forEach(syncViewLayer);
-  }, [layerStates, syncViewLayer]);
+  }, [layerStates, syncViewLayer, mapReady]);
 
   // ── Toggle layer visibility ─────────────────────────────────────────────────
   async function toggleVisible(layerId: string) {
@@ -244,37 +299,42 @@ export function MapPage() {
 
   // ── Start editing ───────────────────────────────────────────────────────────
   async function startEdit(layerId: string) {
-    const draw = drawRef.current;
-    if (!draw) return;
+    // Open the toolbar immediately — don't block on network or map readiness
+    setEditingLayerId(layerId);
+    setHasChanges(false);
+    setDrawMode("select");
+    originalFeaturesRef.current = [];
 
     let features: ApiFeature[] = [];
     const existing = layerStates.find((l) => l.layer.id === layerId);
     if (existing?.loaded) {
       features = existing.features;
     } else {
-      const res = await client.get<ApiFeature[]>(`/layers/${layerId}/features?limit=5000`);
-      features = res.data;
-      setLayerStates((prev) =>
-        prev.map((l) =>
-          l.layer.id === layerId ? { ...l, features, loaded: true, visible: true } : l
-        )
-      );
+      try {
+        const res = await client.get<ApiFeature[]>(`/layers/${layerId}/features?limit=5000`);
+        features = res.data;
+        setLayerStates((prev) =>
+          prev.map((l) =>
+            l.layer.id === layerId ? { ...l, features, loaded: true, visible: true } : l
+          )
+        );
+      } catch (err) {
+        console.error("Failed to load features:", err);
+        message.error("Failed to load features — you can still draw new ones");
+      }
     }
 
     originalFeaturesRef.current = features;
-    setEditingLayerId(layerId);
-    setHasChanges(false);
-    setDrawMode("select");
+
+    const draw = drawRef.current;
+    if (!draw) {
+      message.warning("Map is still loading — drawing tools will activate in a moment");
+      return;
+    }
 
     // Load existing features into terra-draw
     if (features.length > 0) {
-      draw.addFeatures(
-        features.map((f) => ({
-          type: "Feature" as const,
-          geometry: f.geom,
-          properties: { _api_id: f.id, _api_version: f.version, ...f.properties },
-        }))
-      );
+      draw.addFeatures(toDrawFeatures(features));
 
       // Fit to features
       const coords: [number, number][] = [];
@@ -352,13 +412,7 @@ export function MapPage() {
       // Refresh draw with new IDs/versions
       const ids = draw.getSnapshot().map((f) => f.id as string);
       if (ids.length) draw.removeFeatures(ids);
-      draw.addFeatures(
-        res.data.map((f) => ({
-          type: "Feature" as const,
-          geometry: f.geom,
-          properties: { _api_id: f.id, _api_version: f.version, ...f.properties },
-        }))
-      );
+      draw.addFeatures(toDrawFeatures(res.data));
 
       setLayerStates((prev) =>
         prev.map((l) => l.layer.id === editingLayerId ? { ...l, features: res.data } : l)

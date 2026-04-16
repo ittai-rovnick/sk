@@ -53,7 +53,7 @@ async def create_snapshot(
             SELECT id, layer_id, ST_AsGeoJSON(geom)::jsonb AS geom,
                    properties, version, created_by, updated_by, created_at, updated_at
             FROM features
-            WHERE layer_id = :layer_id::uuid AND deleted_at IS NULL
+            WHERE layer_id = CAST(:layer_id AS uuid) AND deleted_at IS NULL
         """)
 
         async with shard_sessions[layer.shard_id]() as shard_db:
@@ -127,13 +127,13 @@ async def get_delta(
         SELECT id, layer_id, ST_AsGeoJSON(geom)::jsonb AS geom,
                properties, version, created_by, updated_by, created_at, updated_at
         FROM features
-        WHERE layer_id = :layer_id::uuid
+        WHERE layer_id = CAST(:layer_id AS uuid)
           AND deleted_at IS NULL
           AND updated_at > :since
     """)
     deleted_sql = text("""
         SELECT id FROM features
-        WHERE layer_id = :layer_id::uuid
+        WHERE layer_id = CAST(:layer_id AS uuid)
           AND deleted_at IS NOT NULL
           AND deleted_at > :since
     """)
@@ -201,7 +201,7 @@ async def push_edits(
                             INSERT INTO features
                                 (layer_id, geom, properties, version, created_by, updated_by, created_at, updated_at)
                             VALUES (
-                                :layer_id::uuid,
+                                CAST(:layer_id AS uuid),
                                 ST_SetSRID(ST_MakeValid(ST_GeomFromGeoJSON(:geom)), 4326),
                                 :properties, 1, :actor, :actor, NOW(), NOW()
                             )
@@ -232,7 +232,7 @@ async def push_edits(
 
                         r = await shard_db.execute(text(f"""
                             UPDATE features SET {', '.join(set_parts)}
-                            WHERE id = :id AND layer_id = :layer_id::uuid
+                            WHERE id = :id AND layer_id = CAST(:layer_id AS uuid)
                               AND version = :expected_version AND deleted_at IS NULL
                             RETURNING id
                         """), params)
@@ -240,7 +240,7 @@ async def push_edits(
                         if row is None:
                             # Check if feature exists at all (to distinguish conflict vs missing)
                             check = await shard_db.execute(
-                                text("SELECT version FROM features WHERE id = :id AND layer_id = :layer_id::uuid AND deleted_at IS NULL"),
+                                text("SELECT version FROM features WHERE id = :id AND layer_id = CAST(:layer_id AS uuid) AND deleted_at IS NULL"),
                                 {"id": edit.feature_id, "layer_id": str(layer_id)},
                             )
                             server_row = check.one_or_none()
@@ -268,7 +268,7 @@ async def push_edits(
                     elif edit.operation == "delete":
                         r = await shard_db.execute(text("""
                             UPDATE features SET deleted_at = NOW(), deleted_by = :actor
-                            WHERE id = :id AND layer_id = :layer_id::uuid AND deleted_at IS NULL
+                            WHERE id = :id AND layer_id = CAST(:layer_id AS uuid) AND deleted_at IS NULL
                             RETURNING id
                         """), {"id": edit.feature_id, "layer_id": str(layer_id), "actor": ctx.ms_object_id})
                         row = r.scalar_one_or_none()
