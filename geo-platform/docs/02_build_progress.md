@@ -20,8 +20,10 @@ Last updated: 2026-04-16
 | 9 | Alembic migrations written and run successfully | ✅ Done |
 | 10 | Web scaffold — React + Vite + Ant Design installed and running | ✅ Done |
 | 11 | API starts, /health returns {"status":"ok","db":"ok"} | ✅ Done |
-| 12 | All 54 API endpoints implemented | ✅ Done |
-| 13 | Web app wired to API (MSAL auth + React Query + working pages) | ⏳ Next |
+| 12 | All API endpoints implemented | ✅ Done |
+| 13 | Auth replaced (local JWT + OS auto-login), web wired to API | ✅ Done |
+| 13a | Custom groups architecture (generic, not MS-only) | ✅ Done |
+| 13b | Map page with MapLibre + terra-draw editing | ✅ Done |
 | 14 | Tests (pytest for API, Playwright or Vitest for web) | ⬜ Pending |
 | 15 | Deployment | ⬜ Pending |
 
@@ -43,12 +45,14 @@ Start: `docker compose up -d` from `geo-platform/`
 
 ### Database schema — fully migrated
 
-**geo_meta** (19 tables):
+**geo_meta** (21 tables):
 
 | Table | Key columns | Notes |
 |-------|-------------|-------|
-| `users` | id, ms_object_id, email, is_superadmin, is_active | Synced from MS Entra |
-| `ms_groups` | id, ms_group_id, display_name, synced_at | MS Entra groups |
+| `users` | id, ms_object_id (nullable), email, is_superadmin, is_active | ms_object_id nullable for local-auth users |
+| `ms_groups` | id, ms_group_id, display_name, is_custom, synced_at | Custom groups have `ms_group_id = "custom:{uuid}"` |
+| `custom_group_members` | group_id, user_id | Manual user → custom group membership |
+| `custom_group_ms_links` | custom_group_id, ms_group_id, ms_display_name | Links custom group to real MS Entra group IDs |
 | `geo_databases` | id, name, default_srid, tags | Top-level containers |
 | `group_layers` | id, database_id, parent_id, name, sort_order, deleted_at | Folder tree |
 | `layers` | id, database_id, group_layer_id, name, geometry_type, srid, status, is_locked, shard_id, deleted_at | Vector layer metadata |
@@ -65,6 +69,12 @@ Start: `docker compose up -d` from `geo-platform/`
 | `failed_syncs` | id, user_id, layer_id, device_id, payload, error_code, resolved | Failed push attempts |
 | `group_quotas` | ms_group_id, max_layers, max_features_per_layer, max_export_mb | Group limits |
 
+Migrations applied:
+- `001_initial.py` — full schema
+- `002_custom_groups.py` — adds `is_custom` to ms_groups, creates custom_group_members
+- `003_custom_group_ms_links.py` — creates custom_group_ms_links
+- `004_local_auth.py` — makes ms_object_id nullable
+
 **geo_features** — partitioned features table:
 - `features` partitioned `BY HASH(layer_id)` into 32 partitions: `features_p0` … `features_p31`
 - Columns: `id` (bigserial PK), `layer_id` (uuid), `geom` (PostGIS Geometry), `properties` (JSONB), `version` (int), `created_by`, `updated_by`, `deleted_at`, `created_at`, `updated_at`
@@ -76,120 +86,104 @@ venv\Scripts\alembic -x db=meta upgrade meta@head
 venv\Scripts\alembic -x db=features upgrade features@head
 ```
 
-### API — 54 endpoints, all implemented
+### API — all endpoints implemented
 
 Start: `cd geo-platform/api && venv\Scripts\python run.py`
 Swagger UI: http://localhost:8000/docs
 
-**Health**
-- `GET /health` — returns `{"status":"ok","db":"ok"}`, no auth required
+**Auth** (local JWT — no Microsoft required)
+- `POST /auth/login` — `{username: email}` → `{token, user}`. In DEV_MODE any email creates a user.
+- `GET /auth/auto-login` — reads OS `%USERNAME%`, auto-creates as superadmin in DEV_MODE if not found.
+- `GET /auth/me` — returns current user from JWT
 
-**Auth**
-- `GET /auth/me` — returns the current user record from the JWT token
+**Databases**
+- `GET /databases`, `POST /databases`, `GET /databases/{id}`, `PUT /databases/{id}`, `DELETE /databases/{id}`
 
-**Databases** — top-level containers for layers
-- `GET /databases` — list all databases
-- `POST /databases` — create (superadmin only)
-- `GET /databases/{id}` — get one
-- `PUT /databases/{id}` — update (superadmin only)
-- `DELETE /databases/{id}` — delete (superadmin only)
+**Group Layers** (folder tree)
+- `GET /group-layers?database_id=`, `POST /group-layers`, `GET /group-layers/{id}`, `PUT /group-layers/{id}`, `DELETE /group-layers/{id}`
 
-**Group Layers** — folder tree for organising layers
-- `GET /group-layers?database_id=` — list (optionally filtered by database)
-- `POST /group-layers` — create (superadmin only)
-- `GET /group-layers/{id}` — get one
-- `PUT /group-layers/{id}` — update (superadmin only)
-- `DELETE /group-layers/{id}` — soft delete (superadmin only)
+**Layers**
+- `GET /layers?database_id=&group_layer_id=`, `POST /layers`, `GET /layers/{id}`, `PUT /layers/{id}`, `DELETE /layers/{id}`
+- `POST /layers/{id}/lock`, `DELETE /layers/{id}/lock`
+- `GET /layers/{id}/schema`, `PUT /layers/{id}/schema`
+- `POST /layers/{id}/lyrx`
 
-**Layers** — vector layer definitions
-- `GET /layers?database_id=&group_layer_id=` — list (filtered)
-- `POST /layers` — create, auto-assigns creator as primary owner
-- `GET /layers/{id}` — get one
-- `PUT /layers/{id}` — update (requires write permission)
-- `DELETE /layers/{id}` — soft delete (requires delete permission)
-- `POST /layers/{id}/lock` — lock layer with optional reason (requires write)
-- `DELETE /layers/{id}/lock` — unlock (lock owner or superadmin only)
-- `GET /layers/{id}/schema` — get JSON Schema for feature properties
-- `PUT /layers/{id}/schema` — update schema, auto-increments schema_version
-- `POST /layers/{id}/lyrx` — upload ArcGIS .lyrx file to MinIO (requires manage_style)
+**Features**
+- `GET /layers/{id}/features?min_lon=&min_lat=&max_lon=&max_lat=&limit=&offset=`
+- `POST /layers/{id}/features`, `GET /layers/{id}/features/{fid}`, `PUT /layers/{id}/features/{fid}`, `DELETE /layers/{id}/features/{fid}`
 
-**Features** — vector geometries in geo_features database
-- `GET /layers/{id}/features?min_lon=&min_lat=&max_lon=&max_lat=&limit=&offset=` — list with optional bbox filter
-- `POST /layers/{id}/features` — create, geometry auto-validated with ST_MakeValid
-- `GET /layers/{id}/features/{fid}` — get one feature as GeoJSON
-- `PUT /layers/{id}/features/{fid}` — update with optimistic locking (body must include current `version`)
-- `DELETE /layers/{id}/features/{fid}` — soft delete
-
-**Symbology** — ArcGIS renderer/label/popup styles
-- `GET /layers/{id}/styles` — list all styles for a layer
-- `POST /layers/{id}/styles` — create style (requires manage_style)
-- `GET /layers/{id}/styles/{sid}` — get one style
-- `PUT /layers/{id}/styles/{sid}` — update style
-- `DELETE /layers/{id}/styles/{sid}` — delete style
-- `POST /layers/{id}/styles/{sid}/lyrx` — upload .lyrx file to MinIO
-- `GET /layers/{id}/styles/{sid}/lyrx` — get pre-signed download URL (1 hour TTL)
+**Symbology**
+- `GET/POST/PUT/DELETE /layers/{id}/styles/{sid}`, `POST /layers/{id}/styles/{sid}/lyrx`, `GET /layers/{id}/styles/{sid}/lyrx`
 
 **Permissions**
-- `GET /roles` — list all roles with their permission flags
-- `GET /permissions?layer_id=&database_id=&group_layer_id=` — list ACL entries
-- `POST /permissions` — grant permission (requires manage_perms on target or superadmin)
-- `DELETE /permissions/{id}` — revoke permission
+- `GET /roles`, `GET /permissions`, `POST /permissions`, `DELETE /permissions/{id}`
 
 **Users**
-- `GET /users?is_active=` — list users (superadmin only)
-- `GET /users/me` — current user
-- `GET /users/{id}` — get one (superadmin or self)
-- `POST /users/{id}/activate` — reactivate a user (superadmin)
-- `POST /users/{id}/deactivate` — deactivate a user (superadmin)
-- `POST /users/{id}/make-superadmin` — grant superadmin (superadmin)
+- `GET /users`, `GET /users/me`, `GET /users/{id}`, `POST /users/{id}/activate`, `POST /users/{id}/deactivate`, `POST /users/{id}/make-superadmin`
 
-**Groups**
-- `GET /groups` — list all MS Entra groups
-- `GET /groups/{id}` — get one group
+**Groups** (custom groups, not MS-only)
+- `GET /groups` — list custom groups (`is_custom=True`)
+- `POST /groups` — create a custom group
+- `GET /groups/{id}`, `PUT /groups/{id}`, `DELETE /groups/{id}`
+- `GET /groups/{id}/members`, `POST /groups/{id}/members`, `DELETE /groups/{id}/members/{user_id}`
+- `GET /groups/{id}/ms-links`, `POST /groups/{id}/ms-links`, `DELETE /groups/{id}/ms-links/{ms_group_id}`
+- `GET /groups/ms/search?q=` — search MS Entra groups (returns which custom groups each is already linked to)
 
 **Rasters**
-- `GET /rasters?database_id=` — list raster catalog entries
-- `POST /rasters` — register a raster (superadmin)
-- `GET /rasters/{id}` — get one
-- `PUT /rasters/{id}` — update metadata (superadmin)
-- `DELETE /rasters/{id}` — remove from catalog (superadmin)
+- `GET /rasters?database_id=`, `POST /rasters`, `GET /rasters/{id}`, `PUT /rasters/{id}`, `DELETE /rasters/{id}`
 
 **Sync** (for Argo offline app)
-- `POST /sync/snapshot` — download all features for given layer IDs, records snapshot timestamp
-- `GET /sync/delta/{layer_id}?device_id=` — get features changed since last snapshot
-- `POST /sync/push` — push edits from device, returns succeeded/conflicts/failed per edit
-- `GET /sync/status/{layer_id}?device_id=` — snapshot age, expiry, pending conflicts
+- `POST /sync/snapshot`, `GET /sync/delta/{layer_id}?device_id=`, `POST /sync/push`, `GET /sync/status/{layer_id}?device_id=`
+- `GET /sync/conflicts`, `PATCH /sync/conflicts/{id}`
 
-### Web app — scaffold running, not wired to API
+### Web app — fully wired to API
 
 Start: `cd geo-platform/web && npm run dev`
 URL: http://localhost:5173
 
-Pages exist as scaffolds (UI shell, no real data):
-- `DatabasesPage.tsx` — list databases
-- `LayersPage.tsx` — list layers per database
-- `LayerDetailPage.tsx` — layer detail + feature map
-- `PermissionsPage.tsx` — manage permissions
-- `UsersPage.tsx` — user management
-- `GroupsPage.tsx` — group list
-- `AuditLogPage.tsx` — audit trail
-- `SyncConflictsPage.tsx` — conflict resolution
+**Auth flow:**
+1. App opens → `LoginPage` fires `GET /auth/auto-login`
+2. API reads OS `%USERNAME%`, finds/creates user, returns JWT
+3. Token stored in `localStorage` as `geo_token`; user stored as `geo_user`
+4. All subsequent requests attach `Authorization: Bearer <token>` automatically
+5. Falls back to manual email form if auto-login returns 404
 
-Components exist as scaffolds:
-- `AppLayout.tsx`, `TopBar.tsx`, `Sidebar.tsx` — shell layout
-- `LayerTree.tsx`, `LayerForm.tsx`, `LockButton.tsx` — layer management
-- `PermissionForm.tsx`, `PermissionMatrix.tsx` — permissions UI
-- `AuthProvider.tsx` — MSAL wrapper (scaffold only, not wired)
+**Working pages:**
+
+| Page | Route | What it does |
+|------|-------|-------------|
+| LoginPage | `/login` | OS auto-login → manual fallback |
+| DatabasesPage | `/databases` | List databases, create new (superadmin) |
+| LayersPage | `/layers` | List layers by database, create/edit/delete |
+| LayerDetailPage | `/layers/:id` | Layer info + feature count |
+| PermissionsPage | `/permissions` | ACL table for selected layer |
+| UsersPage | `/users` | User list, activate/deactivate (superadmin) |
+| GroupsPage | `/groups` | Custom group list, member management |
+| AuditLogPage | `/audit` | Read-only audit trail |
+| SyncConflictsPage | `/conflicts` | List pending sync conflicts, server/client wins |
+| **MapPage** | `/map` | **See below** |
+
+**MapPage (`/map`):**
+- Left panel (260 px): database selector → layer list with:
+  - Colored dot (auto-assigned by index)
+  - Geometry type tag (Point / LineString / Polygon / Unknown)
+  - Eye toggle to show/hide layer on map
+  - Edit button — loads features from API, activates terra-draw editing
+  - Draw mode toolbar: Select / Point / Line / Polygon buttons
+  - Save button — diffs terra-draw snapshot vs original, batch creates/updates/deletes via API
+  - "+ New Layer" button — modal to create a new layer (name + geometry type)
+- Map: MapLibre GL JS with OSM base tiles (no API key needed)
+- Drawing: `terra-draw` with `TerraDrawMapLibreGLAdapter` (MapLibre-native, not mapbox-gl-draw)
+- Feature tracking: `_api_id` and `_api_version` stored in feature properties for diff/save
+
+**Key tech decisions:**
+- No MSAL / Microsoft auth — local HS256 JWT only
+- No React Query — plain axios with Bearer token interceptor
+- `terra-draw` (not `@mapbox/mapbox-gl-draw`) — mapbox lib is incompatible with maplibre at runtime
+- Custom groups are the primary permission entity; MS group IDs are optional linked sources
 
 ---
 
-## Next: Phase 5
+## Next: Phase 14 — Tests
 
 See `docs/04_next_session_prompt.md`.
-
-**Blocker before starting:** Need real Microsoft Entra credentials in `api/.env`:
-```
-MS_TENANT_ID=<your-tenant-id>
-MS_CLIENT_ID=<your-client-id>
-MS_CLIENT_SECRET=<your-client-secret>
-```

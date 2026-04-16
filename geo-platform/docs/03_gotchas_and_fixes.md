@@ -167,3 +167,69 @@ NOT an environment variable. Use `$env:KEY = "value"` instead.
 
 **Fix:** Use the AWS ECR mirror: `public.ecr.aws/bitnami/pgbouncer:latest`
 Already in `docker-compose.yml`.
+
+---
+
+## MSAL auth removed — replaced with local JWT
+
+**Problem:** MSAL login required real Azure credentials (TENANT_ID, CLIENT_ID, CLIENT_SECRET). Not practical for a dev environment.
+
+**Fix:** Replaced entire auth stack with local HS256 JWT:
+- `api/app/auth/local.py` — `create_token()` and `validate_token()`
+- `POST /auth/login` — `{username: email}` → `{token, user}`
+- `GET /auth/auto-login` — reads OS `%USERNAME%`, auto-creates user in DEV_MODE
+- `api/app/dependencies.py` now imports from `auth.local` not `auth.microsoft`
+- Migration `004_local_auth.py` makes `ms_object_id` nullable
+
+---
+
+## ms_object_id non-nullable caused 500 on auto-login
+
+**Problem:** Auto-created users have `ms_object_id=None`, but `UserResponse` schema had `ms_object_id: str`. FastAPI returned 500 instead of 200.
+
+**Fix:** Changed to `ms_object_id: str | None` in `api/app/schemas/users.py`.
+
+---
+
+## @mapbox/mapbox-gl-draw draw controls don't work with MapLibre
+
+**Problem:** Draw controls rendered visually but clicking them did nothing. Root cause: `mapbox-gl-draw` has a deep runtime dependency on the real `mapboxgl` library's internal event system. Vite alias `"mapbox-gl": "maplibre-gl"` reroutes module imports but cannot satisfy the internal method calls `mapbox-gl-draw` expects at runtime.
+
+**Fix:** Replaced with `terra-draw`:
+```bash
+npm remove @mapbox/mapbox-gl-draw
+npm install terra-draw
+```
+`terra-draw` has a first-class `TerraDrawMapLibreGLAdapter`. Modes are React-controlled:
+```typescript
+const draw = new TerraDraw({
+  adapter: new TerraDrawMapLibreGLAdapter({ map }),
+  modes: [
+    new TerraDrawSelectMode({ flags: { point: { feature: { draggable: true } }, ... } }),
+    new TerraDrawPointMode(),
+    new TerraDrawLineStringMode(),
+    new TerraDrawPolygonMode(),
+  ],
+});
+draw.start();
+// activate a mode:
+draw.setMode("point");
+// get all features:
+draw.getSnapshot();
+// load features:
+draw.addFeatures([...]);
+```
+
+---
+
+## Custom groups — groups were MS-only
+
+**Problem:** Original groups model only stored MS Entra groups. No way to create internal groups for users who don't have MS accounts.
+
+**Fix:**
+- Added `is_custom: bool` to `ms_groups` table (migration 002)
+- Custom groups use `ms_group_id = "custom:{uuid}"` string convention
+- `custom_group_members` table stores direct user membership
+- `custom_group_ms_links` table links a custom group to real MS Entra group IDs (optional)
+- `resolve_custom_group_ids()` in `auth/local.py` merges both sources at login time
+- Full CRUD for custom groups in `api/app/routers/groups.py`
