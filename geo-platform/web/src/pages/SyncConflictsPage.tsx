@@ -1,8 +1,7 @@
 import { useState, useEffect } from "react";
-import { Table, Tag, Button, Typography, Space, message, Divider } from "antd";
+import { Table, Tag, Button, Typography, Space, message } from "antd";
 import client from "../api/client";
 import type { SyncConflict } from "../types";
-import { DrawMap } from "../components/shared/DrawMap";
 
 const RESOLUTION_COLOR: Record<string, string> = {
   pending: "orange",
@@ -67,11 +66,6 @@ export function SyncConflictsPage() {
         <Typography.Title level={4} style={{ margin: 0 }}>Sync Conflicts</Typography.Title>
       </Space>
       <Table rowKey="id" dataSource={conflicts} columns={columns} loading={loading} />
-
-      <Divider />
-
-      <Typography.Title level={4}>Map</Typography.Title>
-      <DrawMap />
     </>
   );
 }

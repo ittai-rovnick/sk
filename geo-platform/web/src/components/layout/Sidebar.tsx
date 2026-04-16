@@ -7,6 +7,7 @@ import {
   UserOutlined,
   FileTextOutlined,
   WarningOutlined,
+  GlobalOutlined,
 } from "@ant-design/icons";
 import { useNavigate, useLocation } from "react-router-dom";
 
@@ -15,6 +16,7 @@ const { Sider } = Layout;
 const menuItems = [
   { key: "/databases", icon: <DatabaseOutlined />, label: "Databases" },
   { key: "/layers", icon: <ApartmentOutlined />, label: "Layers" },
+  { key: "/map", icon: <GlobalOutlined />, label: "Map" },
   { key: "/permissions", icon: <SafetyOutlined />, label: "Permissions" },
   { key: "/users", icon: <UserOutlined />, label: "Users" },
   { key: "/groups", icon: <TeamOutlined />, label: "Groups" },
