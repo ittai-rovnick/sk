@@ -4,7 +4,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select
 from typing import Optional
 from app.db.session import get_meta_db, get_feature_db
-from app.auth.microsoft import validate_token
+from app.auth.local import validate_token
 from app.auth.models import RequestContext
 from app.models.layers import Layer
 from app.config import settings

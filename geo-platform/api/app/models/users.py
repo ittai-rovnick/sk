@@ -12,7 +12,7 @@ class User(Base):
     id: Mapped[uuid.UUID] = mapped_column(
         UUID(as_uuid=True), primary_key=True, default=uuid.uuid4
     )
-    ms_object_id: Mapped[str] = mapped_column(String, nullable=False, unique=True)
+    ms_object_id: Mapped[str | None] = mapped_column(String, nullable=True, unique=True)
     email: Mapped[str] = mapped_column(String, nullable=False)
     display_name: Mapped[str | None] = mapped_column(String)
     is_superadmin: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
