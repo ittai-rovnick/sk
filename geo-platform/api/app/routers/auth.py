@@ -1,19 +1,20 @@
 import os
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel
 from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy import select, or_
+from sqlalchemy import select
 from app.dependencies import get_meta_db, get_current_user
 from app.auth.models import RequestContext
 from app.auth.local import create_token
 from app.models.users import User
 from app.schemas.users import UserResponse
+from app.config import settings
 
 router = APIRouter(prefix="/auth", tags=["auth"])
 
 
 class LoginRequest(BaseModel):
-    username: str  # email address
+    username: str
 
 
 class LoginResponse(BaseModel):
@@ -26,7 +27,7 @@ async def login(
     body: LoginRequest,
     db: AsyncSession = Depends(get_meta_db),
 ):
-    """Log in with a username (email). Returns a bearer token for subsequent requests."""
+    """Log in with a username. Returns a bearer token."""
     result = await db.execute(
         select(User).where(User.email == body.username, User.is_active == True)
     )
@@ -40,26 +41,31 @@ async def login(
 
 @router.get("/auto-login", response_model=LoginResponse)
 async def auto_login(db: AsyncSession = Depends(get_meta_db)):
-    """Detect the current OS user and return a token without requiring manual input.
-    Matches the Windows/Linux username against the email prefix (e.g. 'ittai' → 'ittai@...').
-    Returns 404 if no matching active user is found.
+    """Read %USERNAME% from the OS and log in automatically.
+    In DEV_MODE, creates the user as superadmin on first login if they don't exist yet.
     """
-    os_user = (os.environ.get("USERNAME") or os.environ.get("USER") or "").strip().lower()
+    os_user = (os.environ.get("USERNAME") or os.environ.get("USER") or "").strip()
     if not os_user:
         raise HTTPException(status_code=404, detail="Could not detect OS user")
 
     result = await db.execute(
-        select(User).where(
-            User.is_active == True,
-            or_(
-                User.email.ilike(f"{os_user}@%"),   # email prefix match
-                User.email.ilike(f"{os_user}"),      # exact match
-            ),
-        )
+        select(User).where(User.email.ilike(os_user), User.is_active == True)
     )
     user = result.scalar_one_or_none()
+
     if not user:
-        raise HTTPException(status_code=404, detail=f"No user found for OS user '{os_user}'")
+        if not settings.dev_mode:
+            raise HTTPException(status_code=404, detail=f"No user '{os_user}' — ask an admin to create your account")
+        # DEV_MODE: auto-create on first login
+        user = User(
+            email=os_user,
+            display_name=os_user,
+            is_superadmin=True,
+            is_active=True,
+        )
+        db.add(user)
+        await db.commit()
+        await db.refresh(user)
 
     token = create_token(user)
     return LoginResponse(token=token, user=UserResponse.model_validate(user))
