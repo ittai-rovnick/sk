@@ -3,10 +3,13 @@ from typing import Dict
 
 
 class Settings(BaseSettings):
-    # Microsoft
-    ms_tenant_id: str
-    ms_client_id: str
-    ms_client_secret: str
+    # Dev mode — bypasses auth entirely, all requests treated as superadmin
+    dev_mode: bool = False
+
+    # Microsoft (optional in dev_mode)
+    ms_tenant_id: str = "dev"
+    ms_client_id: str = "dev"
+    ms_client_secret: str = "dev"
 
     # Databases
     meta_db_url: str                      # via pgbouncer — API runtime
@@ -26,7 +29,7 @@ class Settings(BaseSettings):
     storage_bucket_exports: str = "geo-exports"
 
     # API
-    api_secret_key: str
+    api_secret_key: str = "dev-secret"
     api_debug: bool = False
     api_cors_origins: list[str] = ["http://localhost:5173"]
 
