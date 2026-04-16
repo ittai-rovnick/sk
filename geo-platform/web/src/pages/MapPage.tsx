@@ -1,11 +1,11 @@
 import { useState, useEffect, useRef, useCallback } from "react";
 import {
   Select, Typography, Button, Tooltip, Space, Spin, message,
-  List, Tag, Divider,
+  List, Tag, Divider, Modal, Form, Input,
 } from "antd";
 import {
   EyeOutlined, EyeInvisibleOutlined, EditOutlined,
-  SaveOutlined, CloseOutlined,
+  SaveOutlined, CloseOutlined, PlusOutlined,
 } from "@ant-design/icons";
 import maplibregl from "maplibre-gl";
 import MapboxDraw from "@mapbox/mapbox-gl-draw";
@@ -71,6 +71,9 @@ export function MapPage() {
   const [editingLayerId, setEditingLayerId] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
   const [hasChanges, setHasChanges] = useState(false);
+  const [newLayerOpen, setNewLayerOpen] = useState(false);
+  const [creatingLayer, setCreatingLayer] = useState(false);
+  const [newLayerForm] = Form.useForm();
 
   const originalFeaturesRef = useRef<ApiFeature[]>([]);
 
@@ -352,6 +355,37 @@ export function MapPage() {
     }
   }
 
+  // ── Create new layer ───────────────────────────────────────────────────────
+  async function createLayer(values: { name: string; geometry_type: string }) {
+    setCreatingLayer(true);
+    try {
+      const res = await client.post<Layer>("/layers", {
+        name: values.name,
+        geometry_type: values.geometry_type,
+        database_id: selectedDb,
+        srid: 4326,
+      });
+      const newLayer = res.data;
+      setLayerStates((prev) => [
+        ...prev,
+        {
+          layer: newLayer,
+          color: COLORS[prev.length % COLORS.length],
+          visible: false,
+          features: [],
+          loaded: true,
+        },
+      ]);
+      message.success(`Layer "${newLayer.name}" created`);
+      setNewLayerOpen(false);
+      newLayerForm.resetFields();
+    } catch {
+      message.error("Failed to create layer");
+    } finally {
+      setCreatingLayer(false);
+    }
+  }
+
   // ── Render ──────────────────────────────────────────────────────────────────
 
   const editingLayer = layerStates.find((l) => l.layer.id === editingLayerId);
@@ -381,9 +415,20 @@ export function MapPage() {
 
         {loadingLayers && <Spin size="small" />}
 
-        {layerStates.length > 0 && (
+        {(layerStates.length > 0 || selectedDb) && (
           <>
-            <Typography.Text strong style={{ marginBottom: 8, display: "block" }}>Layers</Typography.Text>
+            <Space style={{ width: "100%", justifyContent: "space-between", marginBottom: 8 }}>
+              <Typography.Text strong>Layers</Typography.Text>
+              {selectedDb && (
+                <Tooltip title="New layer">
+                  <Button
+                    size="small"
+                    icon={<PlusOutlined />}
+                    onClick={() => setNewLayerOpen(true)}
+                  />
+                </Tooltip>
+              )}
+            </Space>
             <List
               size="small"
               dataSource={layerStates}
@@ -398,18 +443,23 @@ export function MapPage() {
                     }}
                   >
                     <Space style={{ width: "100%", justifyContent: "space-between" }}>
-                      <Space>
-                        <span style={{
-                          width: 10, height: 10, borderRadius: "50%",
-                          background: ls.color, display: "inline-block", flexShrink: 0,
-                        }} />
-                        <Typography.Text
-                          ellipsis
-                          style={{ maxWidth: 120, fontSize: 13 }}
-                          title={ls.layer.name}
-                        >
-                          {ls.layer.name}
-                        </Typography.Text>
+                      <Space direction="vertical" size={0} style={{ flex: 1, minWidth: 0 }}>
+                        <Space>
+                          <span style={{
+                            width: 10, height: 10, borderRadius: "50%",
+                            background: ls.color, display: "inline-block", flexShrink: 0,
+                          }} />
+                          <Typography.Text
+                            ellipsis
+                            style={{ maxWidth: 110, fontSize: 13 }}
+                            title={ls.layer.name}
+                          >
+                            {ls.layer.name}
+                          </Typography.Text>
+                        </Space>
+                        <Tag style={{ marginLeft: 18, fontSize: 10 }} color="default">
+                          {ls.layer.geometry_type}
+                        </Tag>
                       </Space>
                       <Space size={4}>
                         <Tooltip title={ls.visible ? "Hide" : "Show"}>
@@ -438,6 +488,31 @@ export function MapPage() {
             />
           </>
         )}
+
+        {/* New layer modal */}
+        <Modal
+          title="New layer"
+          open={newLayerOpen}
+          onOk={newLayerForm.submit}
+          onCancel={() => { setNewLayerOpen(false); newLayerForm.resetFields(); }}
+          confirmLoading={creatingLayer}
+        >
+          <Form form={newLayerForm} layout="vertical" onFinish={createLayer}>
+            <Form.Item name="name" label="Name" rules={[{ required: true }]}>
+              <Input />
+            </Form.Item>
+            <Form.Item name="geometry_type" label="Geometry type" rules={[{ required: true }]}>
+              <Select options={[
+                { value: "Point", label: "Point" },
+                { value: "LineString", label: "LineString" },
+                { value: "Polygon", label: "Polygon" },
+                { value: "MultiPoint", label: "MultiPoint" },
+                { value: "MultiLineString", label: "MultiLineString" },
+                { value: "MultiPolygon", label: "MultiPolygon" },
+              ]} />
+            </Form.Item>
+          </Form>
+        </Modal>
 
         {editingLayerId && (
           <>
