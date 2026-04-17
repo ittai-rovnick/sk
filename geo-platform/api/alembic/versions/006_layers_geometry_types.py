@@ -29,12 +29,6 @@ def upgrade() -> None:
         ALTER TABLE layers ADD CONSTRAINT layers_geometry_types_valid CHECK (
             geometry_types <@ ARRAY['POINT','LINESTRING','POLYGON',
                                     'MULTIPOINT','MULTILINESTRING','MULTIPOLYGON']
-            AND (
-                array_length(geometry_types, 1) IS NULL
-                OR array_length(geometry_types, 1) = (
-                    SELECT count(DISTINCT x) FROM unnest(geometry_types) AS x
-                )
-            )
         );
     """)
     op.execute("CREATE INDEX layers_geometry_types_idx ON layers USING GIN(geometry_types);")

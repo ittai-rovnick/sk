@@ -6,6 +6,7 @@ import {
 import {
   EyeOutlined, EyeInvisibleOutlined, EditOutlined,
   SaveOutlined, CloseOutlined, PlusOutlined,
+  TableOutlined, SettingOutlined,
 } from "@ant-design/icons";
 import maplibregl from "maplibre-gl";
 import {
@@ -19,6 +20,8 @@ import { TerraDrawMapLibreGLAdapter } from "terra-draw-maplibre-gl-adapter";
 import "maplibre-gl/dist/maplibre-gl.css";
 import client from "../api/client";
 import type { GeoDatabase, Layer } from "../types";
+import { SchemaEditor } from "../components/layers/SchemaEditor";
+import { AttributeTable } from "../components/layers/AttributeTable";
 
 // ── Types ──────────────────────────────────────────────────────────────────────
 
@@ -100,6 +103,14 @@ export function MapPage() {
   const [newLayerOpen, setNewLayerOpen] = useState(false);
   const [creatingLayer, setCreatingLayer] = useState(false);
   const [newLayerForm] = Form.useForm();
+  const [schemaLayerId, setSchemaLayerId] = useState<string | null>(null);
+  const [openTableIds, setOpenTableIds] = useState<string[]>([]);
+  const [activeTableId, setActiveTableId] = useState<string | null>(null);
+  const [tableRefreshKey, setTableRefreshKey] = useState(0);
+  const [tablePanelHeight, setTablePanelHeight] = useState(280);
+  const tableDragging = useRef(false);
+  const tableDragStartY = useRef(0);
+  const tableDragStartH = useRef(0);
 
   const originalFeaturesRef = useRef<ApiFeature[]>([]);
 
@@ -405,17 +416,22 @@ export function MapPage() {
 
       message.success(`Saved: ${creates.length} created, ${updates.length} updated, ${deletes.length} deleted`);
 
-      // Reload
-      const res = await client.get<ApiFeature[]>(`/layers/${editingLayerId}/features?limit=5000`);
-      originalFeaturesRef.current = res.data;
+      // Reload features and layer metadata (geometry_types may have changed)
+      const [featRes, layerRes] = await Promise.all([
+        client.get<ApiFeature[]>(`/layers/${editingLayerId}/features?limit=5000`),
+        client.get<Layer>(`/layers/${editingLayerId}`),
+      ]);
+      originalFeaturesRef.current = featRes.data;
 
       // Refresh draw with new IDs/versions
       const ids = draw.getSnapshot().map((f) => f.id as string);
       if (ids.length) draw.removeFeatures(ids);
-      draw.addFeatures(toDrawFeatures(res.data));
+      draw.addFeatures(toDrawFeatures(featRes.data));
 
       setLayerStates((prev) =>
-        prev.map((l) => l.layer.id === editingLayerId ? { ...l, features: res.data } : l)
+        prev.map((l) => l.layer.id === editingLayerId
+          ? { ...l, features: featRes.data, layer: layerRes.data }
+          : l)
       );
       setHasChanges(false);
     } catch {
@@ -425,13 +441,53 @@ export function MapPage() {
     }
   }
 
+  // ── Table panel drag-to-resize ───────────────────────────────────────────────
+  useEffect(() => {
+    function onMouseMove(e: MouseEvent) {
+      if (!tableDragging.current) return;
+      const delta = tableDragStartY.current - e.clientY;
+      const maxH = window.innerHeight * 0.75;
+      setTablePanelHeight(Math.min(maxH, Math.max(120, tableDragStartH.current + delta)));
+    }
+    function onMouseUp() {
+      if (tableDragging.current) {
+        tableDragging.current = false;
+        document.body.style.cursor = "";
+        document.body.style.userSelect = "";
+      }
+    }
+    window.addEventListener("mousemove", onMouseMove);
+    window.addEventListener("mouseup", onMouseUp);
+    return () => {
+      window.removeEventListener("mousemove", onMouseMove);
+      window.removeEventListener("mouseup", onMouseUp);
+    };
+  }, []);
+
+  function onTableDragStart(e: React.MouseEvent) {
+    e.preventDefault();
+    tableDragging.current = true;
+    tableDragStartY.current = e.clientY;
+    tableDragStartH.current = tablePanelHeight;
+    document.body.style.cursor = "ns-resize";
+    document.body.style.userSelect = "none";
+  }
+
+  function closeTab(id: string) {
+    setOpenTableIds((prev) => prev.filter((x) => x !== id));
+    setActiveTableId((prev) => {
+      if (prev !== id) return prev;
+      const remaining = openTableIds.filter((x) => x !== id);
+      return remaining.length > 0 ? remaining[remaining.length - 1] : null;
+    });
+  }
+
   // ── Create layer ────────────────────────────────────────────────────────────
-  async function createLayer(values: { name: string; geometry_type: string }) {
+  async function createLayer(values: { name: string }) {
     setCreatingLayer(true);
     try {
       const res = await client.post<Layer>("/layers", {
         name: values.name,
-        geometry_type: values.geometry_type,
         database_id: selectedDb,
         srid: 4326,
       });
@@ -506,9 +562,14 @@ export function MapPage() {
                             {ls.layer.name}
                           </Typography.Text>
                         </Space>
-                        <Tag style={{ marginLeft: 18, fontSize: 10 }} color="default">
-                          {ls.layer.geometry_type}
-                        </Tag>
+                        <Space style={{ marginLeft: 18 }} size={2} wrap>
+                          {ls.layer.geometry_types?.length
+                            ? ls.layer.geometry_types.map((t) => (
+                                <Tag key={t} style={{ fontSize: 10 }} color="default">{t}</Tag>
+                              ))
+                            : <Tag style={{ fontSize: 10 }} color="default">empty</Tag>
+                          }
+                        </Space>
                       </Space>
                       <Space size={4}>
                         <Tooltip title={ls.visible ? "Hide" : "Show"}>
@@ -516,6 +577,21 @@ export function MapPage() {
                             icon={ls.visible ? <EyeOutlined /> : <EyeInvisibleOutlined />}
                             onClick={() => toggleVisible(ls.layer.id)}
                             disabled={isEditing}
+                          />
+                        </Tooltip>
+                        <Tooltip title="Attribute table">
+                          <Button type="text" size="small"
+                            icon={<TableOutlined />}
+                            onClick={() => {
+                              setOpenTableIds((prev) => prev.includes(ls.layer.id) ? prev : [...prev, ls.layer.id]);
+                              setActiveTableId(ls.layer.id);
+                            }}
+                          />
+                        </Tooltip>
+                        <Tooltip title="Fields">
+                          <Button type="text" size="small"
+                            icon={<SettingOutlined />}
+                            onClick={() => setSchemaLayerId(ls.layer.id)}
                           />
                         </Tooltip>
                         <Tooltip title={isEditing ? "Stop editing" : "Edit"}>
@@ -599,22 +675,104 @@ export function MapPage() {
             <Form.Item name="name" label="Name" rules={[{ required: true }]}>
               <Input />
             </Form.Item>
-            <Form.Item name="geometry_type" label="Geometry type" rules={[{ required: true }]}>
-              <Select options={[
-                { value: "Point", label: "Point" },
-                { value: "LineString", label: "LineString" },
-                { value: "Polygon", label: "Polygon" },
-                { value: "MultiPoint", label: "MultiPoint" },
-                { value: "MultiLineString", label: "MultiLineString" },
-                { value: "MultiPolygon", label: "MultiPolygon" },
-              ]} />
-            </Form.Item>
           </Form>
         </Modal>
       </div>
 
-      {/* ── Map ── */}
-      <div ref={mapContainer} style={{ flex: 1 }} />
+      {/* ── Map + attribute table column ── */}
+      <div style={{ flex: 1, display: "flex", flexDirection: "column", overflow: "hidden" }}>
+        <div ref={mapContainer} style={{ flex: 1 }} />
+
+        {openTableIds.length > 0 && (
+          <div style={{ height: tablePanelHeight, flexShrink: 0, display: "flex", flexDirection: "column", borderTop: "2px solid #d9d9d9", background: "#fff" }}>
+            {/* ── Drag handle ── */}
+            <div
+              onMouseDown={onTableDragStart}
+              style={{
+                height: 6, cursor: "ns-resize", flexShrink: 0,
+                background: "linear-gradient(180deg, #e8e8e8 0%, #f5f5f5 100%)",
+                display: "flex", alignItems: "center", justifyContent: "center",
+              }}
+            >
+              <div style={{ width: 40, height: 3, borderRadius: 2, background: "#bfbfbf" }} />
+            </div>
+
+            {/* ── Tab strip ── */}
+            <div style={{
+              display: "flex", alignItems: "stretch", borderBottom: "1px solid #f0f0f0",
+              flexShrink: 0, background: "#fafafa", overflow: "auto hidden",
+            }}>
+              {openTableIds.map((id) => {
+                const isActive = id === activeTableId;
+                const name = layerStates.find((l) => l.layer.id === id)?.layer.name ?? "Layer";
+                return (
+                  <div
+                    key={id}
+                    onClick={() => setActiveTableId(id)}
+                    style={{
+                      display: "flex", alignItems: "center", gap: 6,
+                      padding: "4px 12px", cursor: "pointer", whiteSpace: "nowrap",
+                      fontSize: 12, fontWeight: isActive ? 600 : 400,
+                      borderBottom: isActive ? "2px solid #1677ff" : "2px solid transparent",
+                      background: isActive ? "#fff" : "transparent",
+                      color: isActive ? "#1677ff" : "#595959",
+                    }}
+                  >
+                    {name}
+                    <span
+                      onClick={(e) => { e.stopPropagation(); closeTab(id); }}
+                      style={{
+                        display: "inline-flex", alignItems: "center", justifyContent: "center",
+                        width: 16, height: 16, borderRadius: "50%", fontSize: 10, lineHeight: 1,
+                        color: "#8c8c8c",
+                      }}
+                      onMouseEnter={(e) => { (e.target as HTMLElement).style.background = "#e8e8e8"; }}
+                      onMouseLeave={(e) => { (e.target as HTMLElement).style.background = "transparent"; }}
+                    >
+                      ✕
+                    </span>
+                  </div>
+                );
+              })}
+            </div>
+
+            {/* ── Table content (all mounted, only active visible) ── */}
+            <div style={{ flex: 1, overflow: "hidden", position: "relative" }}>
+              {openTableIds.map((id) => (
+                <div
+                  key={id}
+                  style={{
+                    display: id === activeTableId ? "flex" : "none",
+                    flexDirection: "column", height: "100%",
+                  }}
+                >
+                  <AttributeTable
+                    layerId={id}
+                    refreshKey={tableRefreshKey}
+                    onFeaturesChanged={() => {
+                      client.get<ApiFeature[]>(`/layers/${id}/features?limit=5000`).then((r) => {
+                        setLayerStates((prev) =>
+                          prev.map((l) => l.layer.id === id ? { ...l, features: r.data, loaded: true } : l)
+                        );
+                      });
+                    }}
+                  />
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
+      </div>
+
+      {/* ── Schema editor ── */}
+      {schemaLayerId && (
+        <SchemaEditor
+          layerId={schemaLayerId}
+          open={!!schemaLayerId}
+          onClose={() => setSchemaLayerId(null)}
+          onSaved={() => setTableRefreshKey((k) => k + 1)}
+        />
+      )}
     </div>
   );
 }

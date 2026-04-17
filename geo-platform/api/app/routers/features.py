@@ -10,7 +10,7 @@ from app.dependencies import get_meta_db, get_current_user
 from app.auth.models import RequestContext
 from app.auth.permissions import can_user_do
 from app.models.layers import Layer
-from app.schemas.features import FeatureCreate, FeatureUpdate, FeatureResponse, BboxQuery
+from app.schemas.features import FeatureCreate, FeatureUpdate, FeatureResponse, BboxQuery, BulkDeleteRequest
 from app.schemas.layers import ALLOWED_GEOMETRY_TYPES
 from app.services.layer_geometry import refresh_layer_geometry_types
 from app.db.session import shard_sessions
@@ -240,3 +240,38 @@ async def delete_feature(
         if result.rowcount == 0:
             raise HTTPException(status_code=404, detail="Feature not found")
         await refresh_layer_geometry_types(layer_id, shard_db, meta_db)
+
+
+@router.post("/{layer_id}/features/bulk-delete", status_code=status.HTTP_200_OK)
+async def bulk_delete_features(
+    layer_id: uuid.UUID,
+    body: BulkDeleteRequest,
+    meta_db: AsyncSession = Depends(get_meta_db),
+    ctx: RequestContext = Depends(get_current_user),
+):
+    layer = await _get_layer(meta_db, layer_id)
+    if not await can_user_do(meta_db, ctx, str(layer_id), "delete"):
+        raise HTTPException(status_code=403, detail="Delete permission required")
+    if layer.is_locked:
+        raise HTTPException(status_code=409, detail="Layer is locked")
+    if not body.feature_ids:
+        return {"deleted": 0}
+
+    sql = text("""
+        UPDATE features
+        SET deleted_at = NOW(), deleted_by = :actor
+        WHERE layer_id = CAST(:layer_id AS uuid)
+          AND id = ANY(CAST(:ids AS bigint[]))
+          AND deleted_at IS NULL
+    """)
+
+    async with shard_sessions[layer.shard_id]() as shard_db:
+        result = await shard_db.execute(sql, {
+            "layer_id": str(layer_id),
+            "ids": body.feature_ids,
+            "actor": ctx.ms_object_id,
+        })
+        await shard_db.commit()
+        await refresh_layer_geometry_types(layer_id, shard_db, meta_db)
+
+    return {"deleted": result.rowcount}

@@ -29,6 +29,10 @@ class FeatureResponse(BaseModel):
     model_config = {"from_attributes": True}
 
 
+class BulkDeleteRequest(BaseModel):
+    feature_ids: list[int]
+
+
 class BboxQuery(BaseModel):
     min_lon: float
     min_lat: float

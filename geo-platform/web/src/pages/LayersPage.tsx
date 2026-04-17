@@ -10,7 +10,6 @@ import {
 import client from "../api/client";
 import type { GeoDatabase, Layer } from "../types";
 
-const GEOMETRY_TYPES = ["Point", "LineString", "Polygon", "MultiPoint", "MultiLineString", "MultiPolygon"];
 const STATUS_COLOR: Record<string, string> = { draft: "default", review: "orange", published: "green" };
 const HEALTH_COLOR: Record<string, string> = { ok: "success", stale: "warning", error: "error", syncing: "processing" };
 
@@ -104,7 +103,6 @@ export function LayersPage() {
     form.setFieldsValue({
       name: layer.name,
       description: layer.description,
-      geometry_type: layer.geometry_type,
       tags: layer.tags,
     });
   }
@@ -121,7 +119,16 @@ export function LayersPage() {
         </Space>
       ),
     },
-    { title: "Geometry", dataIndex: "geometry_type", key: "geometry_type", width: 130 },
+    {
+      title: "Geometry",
+      dataIndex: "geometry_types",
+      key: "geometry_types",
+      width: 200,
+      render: (types: string[]) =>
+        types?.length
+          ? <Space size={4} wrap>{types.map((t) => <Tag key={t}>{t}</Tag>)}</Space>
+          : <Tag color="default">empty</Tag>,
+    },
     {
       title: "Status",
       dataIndex: "status",
@@ -219,11 +226,6 @@ export function LayersPage() {
           <Form.Item name="description" label="Description">
             <Input.TextArea rows={2} />
           </Form.Item>
-          {!isEditing && (
-            <Form.Item name="geometry_type" label="Geometry type" rules={[{ required: true }]}>
-              <Select options={GEOMETRY_TYPES.map((t) => ({ value: t, label: t }))} />
-            </Form.Item>
-          )}
           <Form.Item name="tags" label="Tags">
             <Select mode="tags" placeholder="Press enter to add tags" />
           </Form.Item>

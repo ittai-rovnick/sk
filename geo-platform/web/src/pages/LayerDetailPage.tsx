@@ -184,7 +184,12 @@ export function LayerDetailPage() {
       </Space>
 
       <Descriptions size="small" column={4} style={{ flexShrink: 0, marginBottom: 12 }}>
-        <Descriptions.Item label="Geometry">{layer.geometry_type}</Descriptions.Item>
+        <Descriptions.Item label="Geometry">
+          {layer.geometry_types?.length
+            ? <Space size={2} wrap>{layer.geometry_types.map((t) => <Tag key={t}>{t}</Tag>)}</Space>
+            : <Tag color="default">empty</Tag>
+          }
+        </Descriptions.Item>
         <Descriptions.Item label="SRID">{layer.srid}</Descriptions.Item>
         <Descriptions.Item label="Features">{loadingFeatures ? "…" : features.length}</Descriptions.Item>
         <Descriptions.Item label="Shard">{layer.shard_id}</Descriptions.Item>
