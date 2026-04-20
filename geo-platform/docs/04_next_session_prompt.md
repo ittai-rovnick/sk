@@ -26,35 +26,48 @@ Paste this entire file into Claude at the start of the next session.
 ### API — all endpoints implemented
 - `GET /health` — liveness check
 - Full CRUD: `/databases`, `/group-layers`, `/layers`, `/rasters`
-- Features: `GET/POST/PUT/DELETE /layers/{id}/features/{fid}` with bbox filter + optimistic locking
+- Features: `GET/POST/PUT/DELETE /layers/{id}/features/{fid}` with bbox filter + `geometry_type` filter + optimistic locking
+- `POST /layers/{id}/features/bulk-delete` — batch soft-delete by feature ID list
+- `GET/PUT /layers/{id}/schema` — define/update layer fields (name, type, required)
 - Permissions: `/roles`, `/permissions`
 - Users: `/users`, `/users/me`, activate/deactivate/make-superadmin
-- Groups: custom groups CRUD + member management + MS group links
-- Sync (for Argo): `/sync/snapshot`, `/sync/delta`, `/sync/push`, `/sync/status`, `/sync/conflicts`
+- Groups: custom groups CRUD + member management + MS group links + nested hierarchy
+- Sync (for Argo): `/sync/snapshot` (+ geometry_type filter), `/sync/delta` (+ geometry_type filter), `/sync/push` (auto-refreshes geometry_types), `/sync/status`, `/sync/conflicts`
 - Auth: `/auth/login`, `/auth/auto-login`, `/auth/me`
+- `geometry_types` auto-refresh: `layer_geometry.py` service recomputes `layers.geometry_types TEXT[]` after every feature create/update/delete/sync-push
 
 ### Web — fully wired, 10 working pages
 - Login (OS auto-login)
 - Databases (list + create)
-- Layers (list + create/edit/delete)
-- Layer Detail
+- Layers (list + create/edit/delete, shows `geometry_types` as tag array)
+- Layer Detail (shows `geometry_types` as tag array)
 - Permissions (ACL per layer)
 - Users (list + activate/deactivate)
-- Groups (custom groups + members)
+- Groups (custom groups + members + nested hierarchy)
 - Audit Log
 - Sync Conflicts (resolve server/client wins)
 - **Map page** at `/map`:
-  - Left panel: database selector → layer list with geometry type, color dot, visibility toggle, edit button
+  - Left panel: database selector → layer list with geometry types tags, color dot, visibility toggle, edit/table/gear buttons
   - Drawing: `terra-draw` with `TerraDrawMapLibreGLAdapter` (NOT mapbox-gl-draw)
   - Modes: Select / Point / LineString / Polygon
-  - Save: diffs terra-draw snapshot vs original features → batch API create/update/delete
-  - Create new layer via modal
+  - Save: diffs terra-draw snapshot vs original features → batch API create/update/delete → auto-refreshes geometry_types
+  - Create new layer via modal (name only, geometry types auto-derived)
+  - **Schema editor modal**: define layer fields (name, type: text/number/boolean/date, required toggle)
+  - **Bottom panel — tabbed attribute tables (ArcGIS Pro style)**:
+    - Drag handle for vertical resize
+    - Tab strip: one tab per opened layer, click to switch, X to close
+    - All open tables stay mounted (display:none for inactive) — preserves data and scroll position
+    - Ant Design Table with dynamic columns from schema fields
+    - Inline editable cells: type-specific inputs (Input, InputNumber, Switch, DatePicker), clear button
+    - Toolbar: row count, Refresh, bulk Delete with selection checkboxes
+    - Schema saves auto-refresh open tables via `refreshKey` prop
 
 ### Key tech stack
 - API: FastAPI + SQLAlchemy 2.0 async + psycopg3 + Alembic (on Python 3.13)
-- Web: React 18 + Vite + Ant Design + React Router v6 + plain axios (no React Query)
+- Web: React 18 + Vite + Ant Design + React Router v6 + plain axios (no React Query) + dayjs
 - Map: MapLibre GL JS + terra-draw
 - Auth: local HS256 JWT, OS username auto-login in DEV_MODE
+- Migrations: 001–006 (meta) + 001 (features)
 
 ---
 
@@ -147,7 +160,10 @@ Set `DEV_MODE=true` in test env so auto-login creates test users.
 | `web/src/App.tsx` | React Router route definitions |
 | `web/src/auth/AuthContext.tsx` | React auth context — token + user in localStorage |
 | `web/src/api/client.ts` | Axios instance with Bearer token interceptor |
-| `web/src/pages/MapPage.tsx` | Full map + terra-draw editing page |
+| `web/src/pages/MapPage.tsx` | Full map + terra-draw editing + tabbed attribute tables |
+| `web/src/components/layers/AttributeTable.tsx` | Editable attribute table with inline cell editing |
+| `web/src/components/layers/SchemaEditor.tsx` | Modal for defining layer fields (name, type, required) |
+| `api/app/services/layer_geometry.py` | Recomputes `layers.geometry_types` from active features |
 
 ---
 

@@ -42,7 +42,7 @@ It serves three types of clients simultaneously:
          │                                  (S3 storage for
     geo_meta                               .lyrx files and
     :5432                                   raster COGs)
-    (19 tables)
+    (21 tables)
          │
       Redis
       :6379
@@ -62,7 +62,7 @@ It serves three types of clients simultaneously:
 | Geometry | GeoAlchemy2 | latest | PostGIS geometry columns in SQLAlchemy models |
 | Validation | Pydantic v2 | 2.10.6 | request/response schemas |
 | Settings | pydantic-settings | 2.7.1 | reads from api/.env |
-| Auth | python-jose + MSAL | — | validates MS Entra ID JWTs |
+| Auth | python-jose (HS256 JWT) | — | local JWT auth, OS auto-login in DEV_MODE |
 | Meta DB | PostgreSQL 16 + PostGIS 3.4 | — | geo_meta on port 5432 |
 | Features DB | PostgreSQL 16 + PostGIS 3.4 | — | geo_features on port 5433 |
 | Connection pooler | pgbouncer (bitnami) | latest | port 6432 → 5432, transaction mode |
@@ -71,8 +71,7 @@ It serves three types of clients simultaneously:
 | Web framework | React 18 + TypeScript | — | |
 | Web bundler | Vite | latest | port 5173 in dev |
 | Web UI library | Ant Design | latest | |
-| Web auth | @azure/msal-react | latest | Microsoft login |
-| Web data fetching | React Query (TanStack) | latest | |
+| Web map | MapLibre GL JS + terra-draw | latest | MapLibre-native drawing (not mapbox-gl-draw) |
 | Web routing | React Router v6 | — | |
 
 ---
@@ -98,7 +97,7 @@ geo-platform/
 │       ├── dependencies.py       get_meta_db, get_current_user FastAPI dependencies
 │       ├── auth/
 │       │   ├── models.py         RequestContext dataclass
-│       │   ├── microsoft.py      JWT validation via python-jose
+│       │   ├── local.py          Local JWT auth (create_token, validate_token, auto-login)
 │       │   └── permissions.py    can_user_do() → calls PostgreSQL function
 │       ├── db/
 │       │   ├── base.py           SQLAlchemy declarative Base
@@ -106,7 +105,7 @@ geo-platform/
 │       ├── models/               SQLAlchemy ORM models (9 files)
 │       ├── schemas/              Pydantic request/response schemas (6 files)
 │       ├── routers/              FastAPI routers (13 files — all implemented)
-│       └── services/             Business logic services (7 files)
+│       └── services/             Business logic services (8 files, incl. layer_geometry.py)
 ├── web/                          React frontend
 │   ├── package.json
 │   ├── vite.config.ts
@@ -114,9 +113,11 @@ geo-platform/
 │   └── src/
 │       ├── main.tsx
 │       ├── App.tsx               Routes definition
-│       ├── auth/AuthProvider.tsx MSAL wrapper (scaffold only)
+│       ├── auth/AuthContext.tsx   React auth context — token + user in localStorage
+│       ├── api/client.ts         Axios instance with Bearer token interceptor
 │       ├── components/           Shared + layout + layer + permission components
-│       └── pages/                DatabasesPage, LayersPage, UsersPage, etc.
+│       │   └── layers/           SchemaEditor.tsx, AttributeTable.tsx, LayerForm.tsx, etc.
+│       └── pages/                DatabasesPage, LayersPage, MapPage, UsersPage, etc.
 ├── docker-compose.yml
 ├── Makefile
 ├── COMMANDS.txt                  Quick reference for start/stop/connect
@@ -127,15 +128,17 @@ geo-platform/
 
 ## Database design
 
-### geo_meta (19 tables) — metadata, users, permissions
+### geo_meta (21 tables) — metadata, users, permissions
 
 | Table | Purpose |
 |-------|---------|
 | `users` | User records synced from MS Entra ID |
-| `ms_groups` | MS Entra group records, synced periodically |
+| `ms_groups` | MS Entra group records + custom groups (`is_custom`, `parent_id` for nesting) |
+| `custom_group_members` | Manual user → custom group membership |
+| `custom_group_ms_links` | Links custom groups to real MS Entra group IDs |
 | `geo_databases` | Top-level containers for layers |
 | `group_layers` | Folder-like groupings of layers (tree structure, self-referencing) |
-| `layers` | Vector layer definitions (geometry type, srid, status, lock state) |
+| `layers` | Vector layer definitions (`geometry_types TEXT[]` auto-derived from features, srid, status, lock state) |
 | `layer_owners` | Many-to-many: which users own which layers |
 | `layer_schema` | JSON Schema for feature properties validation per layer |
 | `layer_styles` | ArcGIS renderer/label/popup config per layer (JSONB) |
