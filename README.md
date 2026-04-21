@@ -1,4 +1,4 @@
-# sk
+# Geo Platform Repository
 
 This repository currently contains the **Geo Platform** project in `geo-platform/`.
 
