@@ -4,7 +4,23 @@
       "Bash(git --version)",
       "Bash(docker --version)",
       "Bash(docker compose *)",
-      "Bash(code --version)"
+      "Bash(code --version)",
+      "Bash(docker pull *)",
+      "Bash(python -m venv \"c:/Itay/sk/geo-platform/api/venv\")"
+    ]
+  },
+  "hooks": {
+    "PostToolUse": [
+      {
+        "matcher": "Bash",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "jq -r '.tool_input.command // \"\"' | { read -r cmd; echo \"$cmd\" | grep -qE 'git push|git merge' && printf '{\"hookSpecificOutput\":{\"hookEventName\":\"PostToolUse\",\"additionalContext\":\"A git push or merge just completed. Before this session ends, make sure you have: (1) updated geo-platform/CLAUDE.md (What is built section, endpoint tables, web pages table, any new rules), (2) updated geo-platform/docs/02_build_progress.md (phase tracker), (3) added any non-obvious gotchas to docs/03_gotchas_and_fixes.md. These docs keep future sessions accurate — do not skip them.\"}}'; } 2>/dev/null || true",
+            "statusMessage": "Checking if docs need updating..."
+          }
+        ]
+      }
     ]
   }
 }
