@@ -35,20 +35,20 @@ services:
       retries: 5
 
   pgbouncer:
-    image: public.ecr.aws/bitnami/pgbouncer:latest
+    image: edoburu/pgbouncer:latest
     container_name: geo_pgbouncer
     environment:
-      POSTGRESQL_HOST: postgres_meta
-      POSTGRESQL_PORT: 5432
-      POSTGRESQL_DATABASE: geo_meta
-      POSTGRESQL_USERNAME: geouser
-      POSTGRESQL_PASSWORD: geopassword
-      PGBOUNCER_DATABASE: geo_meta
-      PGBOUNCER_AUTH_TYPE: md5
-      PGBOUNCER_POOL_MODE: transaction
-      PGBOUNCER_MAX_CLIENT_CONN: 500
-      PGBOUNCER_DEFAULT_POOL_SIZE: 25
-      PGBOUNCER_MIN_POOL_SIZE: 5
+      DB_HOST: postgres_meta
+      DB_PORT: 5432
+      DB_NAME: geo_meta
+      DB_USER: geouser
+      DB_PASSWORD: geopassword
+      AUTH_TYPE: md5
+      POOL_MODE: transaction
+      MAX_CLIENT_CONN: 500
+      DEFAULT_POOL_SIZE: 25
+      MIN_POOL_SIZE: 5
+      LISTEN_PORT: 6432
     ports:
       - "6432:6432"
     depends_on:

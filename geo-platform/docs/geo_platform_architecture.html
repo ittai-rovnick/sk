@@ -1,0 +1,1109 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Geo Platform — Architecture & Design</title>
+<style>
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; background: #f8f7f4; color: #1a1a18; line-height: 1.5; }
+  .page { max-width: 1100px; margin: 0 auto; padding: 40px 24px; }
+  h1 { font-size: 28px; font-weight: 600; margin-bottom: 6px; }
+  .subtitle { font-size: 14px; color: #888; margin-bottom: 40px; }
+  h2 { font-size: 13px; font-weight: 600; letter-spacing: .07em; text-transform: uppercase; color: #888; margin-bottom: 14px; margin-top: 36px; }
+  .row { display: flex; gap: 12px; flex-wrap: wrap; margin-bottom: 12px; }
+  .card { border: 1px solid #e0ddd6; border-radius: 10px; overflow: hidden; flex: 1; min-width: 180px; background: #fff; }
+  .card-head { padding: 9px 14px; font-size: 12px; font-weight: 600; border-bottom: 1px solid #f0ede6; }
+  .h-purple { background: #EEEDFE; color: #3C3489; }
+  .h-teal   { background: #E1F5EE; color: #085041; }
+  .h-coral  { background: #FAECE7; color: #712B13; }
+  .h-amber  { background: #FAEEDA; color: #633806; }
+  .h-blue   { background: #E6F1FB; color: #0C447C; }
+  .h-gray   { background: #F1EFE8; color: #444441; }
+  .h-green  { background: #EAF3DE; color: #27500A; }
+  .h-red    { background: #FCEBEB; color: #791F1F; }
+  .card-body { padding: 10px 14px; }
+  .item { font-size: 12px; color: #555; padding: 2px 0; display: flex; align-items: flex-start; gap: 7px; }
+  .dot { width: 5px; height: 5px; border-radius: 50%; flex-shrink: 0; margin-top: 5px; }
+  .dp { background: #7F77DD; } .dt { background: #1D9E75; } .dc { background: #D85A30; }
+  .da { background: #BA7517; } .db { background: #378ADD; } .dg { background: #888780; }
+  .dv { background: #639922; } .dr { background: #E24B4A; }
+  .divider { height: 1px; background: #f0ede6; margin: 7px 0; }
+  .tag { font-size: 9px; font-weight: 600; padding: 1px 6px; border-radius: 4px; margin-left: auto; white-space: nowrap; }
+  .tag-fast { background: #E1F5EE; color: #085041; }
+  .tag-big  { background: #FAECE7; color: #712B13; }
+  .tag-new  { background: #EEEDFE; color: #3C3489; }
+  .tag-admin { background: #FAEEDA; color: #633806; }
+  .tag-perm { background: #FCEBEB; color: #791F1F; }
+
+  /* FLOW DIAGRAM */
+  .flow { background: #fff; border: 1px solid #e0ddd6; border-radius: 12px; padding: 24px; margin-bottom: 12px; overflow-x: auto; }
+  .flow svg { display: block; min-width: 700px; }
+
+  /* TIER TABLE */
+  table { width: 100%; border-collapse: collapse; font-size: 13px; background: #fff; border-radius: 10px; overflow: hidden; border: 1px solid #e0ddd6; margin-bottom: 12px; }
+  th { background: #f8f7f4; padding: 10px 16px; text-align: left; font-weight: 600; font-size: 12px; border-bottom: 1px solid #e0ddd6; }
+  td { padding: 10px 16px; border-bottom: 1px solid #f0ede6; vertical-align: top; font-size: 12px; color: #444; }
+  tr:last-child td { border-bottom: none; }
+  .tier-1 { color: #085041; font-weight: 600; }
+  .tier-2 { color: #633806; font-weight: 600; }
+  .tier-3 { color: #712B13; font-weight: 600; }
+
+  /* VERDICT */
+  .verdict { display: flex; gap: 10px; padding: 12px 16px; border-radius: 8px; border: 1px solid #e0ddd6; margin-bottom: 8px; background: #fff; font-size: 12px; color: #555; }
+  .verdict-ok { border-left: 3px solid #1D9E75; }
+  .verdict-warn { border-left: 3px solid #BA7517; }
+  .verdict strong { color: #1a1a18; }
+
+  /* QUERY FLOW */
+  .query-step { display: flex; align-items: center; gap: 0; flex-wrap: wrap; margin-bottom: 8px; }
+  .qbox { padding: 7px 14px; border-radius: 6px; font-size: 12px; font-weight: 500; white-space: nowrap; }
+  .qarrow { padding: 0 8px; color: #aaa; font-size: 16px; }
+  .q-blue { background: #E6F1FB; color: #0C447C; }
+  .q-gray { background: #F1EFE8; color: #444441; }
+  .q-teal { background: #E1F5EE; color: #085041; }
+  .q-coral { background: #FAECE7; color: #712B13; }
+  .q-green { background: #EAF3DE; color: #27500A; }
+  .q-time { font-size: 11px; color: #888; margin-left: 8px; }
+
+  code { font-family: 'Courier New', monospace; font-size: 11px; background: #f8f7f4; padding: 2px 5px; border-radius: 4px; color: #712B13; }
+
+  .section-note { font-size: 12px; color: #888; margin-bottom: 12px; margin-top: -8px; }
+
+  /* API TABLE */
+  .api-table { width: 100%; border-collapse: collapse; font-size: 12px; background: #fff; border-radius: 10px; overflow: hidden; border: 1px solid #e0ddd6; margin-bottom: 12px; }
+  .api-table th { background: #f8f7f4; padding: 8px 12px; text-align: left; font-weight: 600; font-size: 11px; border-bottom: 1px solid #e0ddd6; }
+  .api-table td { padding: 8px 12px; border-bottom: 1px solid #f4f2ed; vertical-align: top; font-size: 11.5px; color: #444; }
+  .api-table tr:last-child td { border-bottom: none; }
+  .api-table tr:hover td { background: #fdfcfa; }
+  .method { font-size: 10px; font-weight: 700; padding: 2px 7px; border-radius: 4px; white-space: nowrap; }
+  .m-get  { background: #E1F5EE; color: #085041; }
+  .m-post { background: #EEEDFE; color: #3C3489; }
+  .m-put  { background: #FAEEDA; color: #633806; }
+  .m-del  { background: #FCEBEB; color: #791F1F; }
+  .endpoint-path { font-family: 'Courier New', monospace; font-size: 11px; color: #1a1a18; }
+  .ep-note { font-size: 11px; color: #888; margin-top: 2px; }
+  .auth-badge { font-size: 9px; font-weight: 600; padding: 1px 5px; border-radius: 3px; white-space: nowrap; }
+  .auth-open    { background: #EAF3DE; color: #27500A; }
+  .auth-token   { background: #E6F1FB; color: #0C447C; }
+  .auth-admin   { background: #FAEEDA; color: #633806; }
+  .auth-owner   { background: #FAECE7; color: #712B13; }
+  .auth-perm    { background: #FCEBEB; color: #791F1F; }
+
+  /* Schema box */
+  .schema-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(280px, 1fr)); gap: 12px; margin-bottom: 12px; }
+  .schema-card { background: #fff; border: 1px solid #e0ddd6; border-radius: 10px; overflow: hidden; }
+  .schema-head { padding: 8px 14px; font-size: 12px; font-weight: 600; background: #F1EFE8; color: #444441; border-bottom: 1px solid #e0ddd6; }
+  .schema-body { padding: 8px 14px; }
+  .schema-row { display: flex; justify-content: space-between; font-size: 11px; padding: 2px 0; border-bottom: 1px solid #f8f7f4; }
+  .schema-row:last-child { border-bottom: none; }
+  .schema-field { font-family: 'Courier New', monospace; color: #3C3489; }
+  .schema-type  { color: #888; font-size: 10px; }
+  .schema-req   { color: #712B13; font-size: 10px; font-weight: 600; }
+  .schema-opt   { color: #aaa; font-size: 10px; }
+</style>
+</head>
+<body>
+<div class="page">
+
+  <h1>Geo Platform — Architecture & Design</h1>
+  <p class="subtitle">FastAPI · SQLAlchemy 2.0 · PostgreSQL 16 + PostGIS 3.4 · React 18 · Microsoft Entra ID</p>
+
+  <!-- CURRENT INFRASTRUCTURE -->
+  <h2>Current infrastructure — what actually runs</h2>
+  <p class="section-note">5 Docker services defined in <code>docker-compose.yml</code>. Always exactly 2 PostgreSQL instances — metadata and features are always separate.</p>
+  <table>
+    <thead>
+      <tr><th>Service</th><th>Container</th><th>Port</th><th>What it holds</th><th>Notes</th></tr>
+    </thead>
+    <tbody>
+      <tr>
+        <td class="tier-1">postgres_meta</td>
+        <td><code>geo_meta</code></td>
+        <td>5432</td>
+        <td>All metadata: users, layers, permissions, styles, audit log, sync state — 21 tables</td>
+        <td>Never holds feature geometries. Always accessed via pgbouncer at port 6432.</td>
+      </tr>
+      <tr>
+        <td class="tier-1">postgres_features</td>
+        <td><code>geo_features</code></td>
+        <td>5433</td>
+        <td>All feature geometries + properties. One logical <code>features</code> table, 32 hash partitions on <code>layer_id</code>.</td>
+        <td>This is shard 0. Config supports adding more shards via <code>features_shard_N_url</code> without code changes.</td>
+      </tr>
+      <tr>
+        <td class="tier-2">pgbouncer</td>
+        <td><code>geo_pgbouncer</code></td>
+        <td>6432 → 5432</td>
+        <td>Connection pool for <strong>postgres_meta only</strong>. 500 client connections → 25 real DB connections.</td>
+        <td>Transaction pool mode. The features DB connects directly (no pgbouncer in front of it).</td>
+      </tr>
+      <tr>
+        <td class="tier-2">redis</td>
+        <td><code>geo_redis</code></td>
+        <td>6379</td>
+        <td>Cache: group memberships, permission results, shard routing table, layer metadata.</td>
+        <td>Redis 7 Alpine. Not a DB — losing it is safe, just slower.</td>
+      </tr>
+      <tr>
+        <td class="tier-3">minio</td>
+        <td><code>geo_minio</code></td>
+        <td>9000 (API) / 9001 (console)</td>
+        <td>S3-compatible object store: <code>geo-styles/</code> (.lyrx files), <code>geo-rasters/</code> (COG TIFFs), <code>geo-exports/</code>.</td>
+        <td>Only S3 keys stored in PostgreSQL. Presigned URLs generated at request time.</td>
+      </tr>
+    </tbody>
+  </table>
+
+  <!-- CLIENTS -->
+  <h2>Clients — who talks to the system</h2>
+  <div class="row">
+    <div class="card">
+      <div class="card-head h-purple">Argo (.NET)</div>
+      <div class="card-body">
+        <div class="item"><span class="dot dp"></span>ArcGIS Maps SDK</div>
+        <div class="item"><span class="dot dp"></span>Online + offline sync</div>
+        <div class="item"><span class="dot dp"></span>Reads features + styles via API</div>
+        <div class="item"><span class="dot dp"></span>Pushes edits when back online</div>
+        <div class="item"><span class="dot dp"></span>72-hour offline window (snapshot TTL)</div>
+      </div>
+    </div>
+    <div class="card">
+      <div class="card-head h-purple">ArcGIS Pro</div>
+      <div class="card-body">
+        <div class="item"><span class="dot dp"></span>Direct PostgreSQL connection</div>
+        <div class="item"><span class="dot dp"></span>Also via API for metadata</div>
+        <div class="item"><span class="dot dp"></span>Full edit capabilities</div>
+        <div class="item"><span class="dot dp"></span>Reads .lyrx from MinIO via presigned URL</div>
+      </div>
+    </div>
+    <div class="card">
+      <div class="card-head h-purple">Esri Portal</div>
+      <div class="card-body">
+        <div class="item"><span class="dot dp"></span>OGC Features API endpoint</div>
+        <div class="item"><span class="dot dp"></span>Read + publish layers</div>
+        <div class="item"><span class="dot dp"></span>Tile services</div>
+      </div>
+    </div>
+    <div class="card">
+      <div class="card-head h-purple">Web app (React 18)</div>
+      <div class="card-body">
+        <div class="item"><span class="dot dp"></span>Manage layers, databases, groups</div>
+        <div class="item"><span class="dot dp"></span>Permissions matrix + grant/revoke UI</div>
+        <div class="item"><span class="dot dp"></span>Audit log viewer</div>
+        <div class="item"><span class="dot dp"></span>Sync conflict resolver</div>
+        <div class="item"><span class="dot dp"></span>Layer health dashboard</div>
+      </div>
+    </div>
+  </div>
+
+  <!-- AUTH -->
+  <h2>Authentication — Microsoft Entra ID (no passwords stored)</h2>
+  <div class="row">
+    <div class="card">
+      <div class="card-head h-blue">Microsoft Entra ID (production)</div>
+      <div class="card-body">
+        <div class="item"><span class="dot db"></span>Every client authenticates here first</div>
+        <div class="item"><span class="dot db"></span>JWT includes <code>oid</code> + <code>groups</code> claims</div>
+        <div class="item"><span class="dot db"></span>API validates JWT signature — no network call</div>
+        <div class="item"><span class="dot db"></span>Graph API only called for 200+ group users</div>
+        <div class="item"><span class="dot db"></span>Validated in <code>auth/microsoft.py</code></div>
+      </div>
+    </div>
+    <div class="card">
+      <div class="card-head h-blue">Local JWT (dev mode)</div>
+      <div class="card-body">
+        <div class="item"><span class="dot db"></span>No Microsoft required in dev</div>
+        <div class="item"><span class="dot db"></span><code>POST /auth/login</code> → pass username</div>
+        <div class="item"><span class="dot db"></span><code>GET /auth/auto-login</code> → uses OS <code>%USERNAME%</code></div>
+        <div class="item"><span class="dot db"></span>Auto-creates user as superadmin</div>
+        <div class="item"><span class="dot db"></span>Implemented in <code>auth/local.py</code></div>
+      </div>
+    </div>
+    <div class="card">
+      <div class="card-head h-blue">RequestContext (in-memory per request)</div>
+      <div class="card-body">
+        <div class="item"><span class="dot db"></span><code>ms_object_id</code> — Entra OID</div>
+        <div class="item"><span class="dot db"></span><code>ms_group_ids[]</code> — all resolved group IDs</div>
+        <div class="item"><span class="dot db"></span><code>user_id</code> — UUID in users table</div>
+        <div class="item"><span class="dot db"></span><code>is_superadmin</code> — bypasses all ACL checks</div>
+      </div>
+    </div>
+    <div class="card">
+      <div class="card-head h-blue">Redis cache</div>
+      <div class="card-body">
+        <div class="item"><span class="dot db"></span>MS group lookups — 5 min TTL</div>
+        <div class="item"><span class="dot db"></span>Permission resolution results — 1 min TTL</div>
+        <div class="item"><span class="dot db"></span>Layer shard routing table — 10 min TTL</div>
+        <div class="item"><span class="dot db"></span>Layer metadata summaries</div>
+      </div>
+    </div>
+  </div>
+
+  <!-- API OVERVIEW -->
+  <h2>API layer — 13 router groups, FastAPI + SQLAlchemy 2.0 async</h2>
+  <p class="section-note">Base URL: <code>http://localhost:8000</code> · Interactive docs: <code>/docs</code> · Auth: <code>Authorization: Bearer &lt;token&gt;</code></p>
+
+  <div class="row">
+    <div class="card">
+      <div class="card-head h-teal">Router groups</div>
+      <div class="card-body">
+        <div class="item"><span class="dot dt"></span><code>/auth</code> — login, auto-login, me</div>
+        <div class="item"><span class="dot dt"></span><code>/databases</code> — CRUD for top-level containers</div>
+        <div class="item"><span class="dot dt"></span><code>/layers</code> — CRUD + lock/unlock</div>
+        <div class="item"><span class="dot dt"></span><code>/layers/{id}/features</code> — CRUD + bbox + bulk-delete</div>
+        <div class="item"><span class="dot dt"></span><code>/group-layers</code> — folder tree CRUD</div>
+        <div class="item"><span class="dot dt"></span><code>/roles</code> — list permission roles</div>
+        <div class="item"><span class="dot dt"></span><code>/permissions</code> — ACL grant/revoke</div>
+        <div class="item"><span class="dot dt"></span><code>/layers/{id}/styles</code> — symbology + .lyrx upload</div>
+        <div class="item"><span class="dot dt"></span><code>/rasters</code> — raster catalog CRUD</div>
+        <div class="item"><span class="dot dt"></span><code>/users</code> — list, activate, promote</div>
+        <div class="item"><span class="dot dt"></span><code>/groups</code> — custom groups tree + members + MS links</div>
+        <div class="item"><span class="dot dt"></span><code>/sync</code> — snapshot, delta, push, status</div>
+        <div class="item"><span class="dot dt"></span><code>/health</code> — no auth healthcheck</div>
+      </div>
+    </div>
+    <div class="card">
+      <div class="card-head h-teal">Shard router</div>
+      <div class="card-body">
+        <div class="item"><span class="dot dt"></span>Reads <code>layer.shard_id</code> from metadata DB</div>
+        <div class="item"><span class="dot dt"></span>Result cached in Redis — ~0ms overhead</div>
+        <div class="item"><span class="dot dt"></span>Routes to the right <code>shard_sessions[shard_id]</code> engine</div>
+        <div class="item"><span class="dot dt"></span>Completely transparent to endpoint code</div>
+        <div class="divider"></div>
+        <div class="item"><span class="dot dt"></span>Currently: 1 shard → geo_features :5433 <span class="tag tag-fast">now</span></div>
+        <div class="item"><span class="dot dt"></span>Add shards: set <code>features_shard_count</code> + <code>features_shard_N_url</code> in <code>.env</code></div>
+        <div class="item"><span class="dot dt"></span>No code changes needed to add a shard</div>
+      </div>
+    </div>
+    <div class="card">
+      <div class="card-head h-teal">PgBouncer (per shard)</div>
+      <div class="card-body">
+        <div class="item"><span class="dot dt"></span>Sits between API and every DB</div>
+        <div class="item"><span class="dot dt"></span>500 API connections in</div>
+        <div class="item"><span class="dot dt"></span>→ 25 real DB connections out</div>
+        <div class="item"><span class="dot dt"></span>Queues overflow requests</div>
+        <div class="item"><span class="dot dt"></span>Prevents DB saturation under burst</div>
+      </div>
+    </div>
+  </div>
+
+  <!-- FULL API REFERENCE -->
+  <h2>Full API reference</h2>
+  <p class="section-note">Auth badges: <span class="auth-badge auth-open">open</span> no token needed &nbsp; <span class="auth-badge auth-token">token</span> any authenticated user &nbsp; <span class="auth-badge auth-admin">superadmin</span> superadmin flag required &nbsp; <span class="auth-badge auth-owner">permission</span> ACL check on the resource</p>
+
+  <!-- AUTH ENDPOINTS -->
+  <p style="font-size:11px;font-weight:700;color:#888;margin-bottom:6px;margin-top:14px">AUTH</p>
+  <table class="api-table">
+    <thead><tr><th style="width:70px">Method</th><th style="width:280px">Path</th><th>Description</th><th style="width:80px">Auth</th></tr></thead>
+    <tbody>
+      <tr>
+        <td><span class="method m-post">POST</span></td>
+        <td><span class="endpoint-path">/auth/login</span></td>
+        <td>Dev mode only. Body: <code>{"username":"itay"}</code>. Returns <code>token</code> + <code>UserResponse</code>. Auto-creates user as superadmin.</td>
+        <td><span class="auth-badge auth-open">open</span></td>
+      </tr>
+      <tr>
+        <td><span class="method m-get">GET</span></td>
+        <td><span class="endpoint-path">/auth/auto-login</span></td>
+        <td>Dev mode only. Reads OS <code>%USERNAME%</code> / <code>$USER</code>. Returns <code>token</code> + <code>UserResponse</code>.</td>
+        <td><span class="auth-badge auth-open">open</span></td>
+      </tr>
+      <tr>
+        <td><span class="method m-get">GET</span></td>
+        <td><span class="endpoint-path">/auth/me</span></td>
+        <td>Returns current user from Bearer token.</td>
+        <td><span class="auth-badge auth-token">token</span></td>
+      </tr>
+    </tbody>
+  </table>
+
+  <!-- DATABASE ENDPOINTS -->
+  <p style="font-size:11px;font-weight:700;color:#888;margin-bottom:6px;margin-top:14px">DATABASES — top-level containers that group layers</p>
+  <table class="api-table">
+    <thead><tr><th style="width:70px">Method</th><th style="width:280px">Path</th><th>Description</th><th style="width:100px">Auth</th></tr></thead>
+    <tbody>
+      <tr>
+        <td><span class="method m-get">GET</span></td>
+        <td><span class="endpoint-path">/databases</span></td>
+        <td>List all databases sorted by name.</td>
+        <td><span class="auth-badge auth-token">token</span></td>
+      </tr>
+      <tr>
+        <td><span class="method m-post">POST</span></td>
+        <td><span class="endpoint-path">/databases</span></td>
+        <td>Create database. Body: <code>name</code> (required), <code>description</code>, <code>default_srid</code> (default 4326), <code>tags[]</code>. Returns 201.</td>
+        <td><span class="auth-badge auth-admin">superadmin</span></td>
+      </tr>
+      <tr>
+        <td><span class="method m-get">GET</span></td>
+        <td><span class="endpoint-path">/databases/{database_id}</span></td>
+        <td>Get single database.</td>
+        <td><span class="auth-badge auth-token">token</span></td>
+      </tr>
+      <tr>
+        <td><span class="method m-put">PUT</span></td>
+        <td><span class="endpoint-path">/databases/{database_id}</span></td>
+        <td>Update database. All fields optional: <code>name</code>, <code>description</code>, <code>default_srid</code>, <code>tags</code>.</td>
+        <td><span class="auth-badge auth-admin">superadmin</span></td>
+      </tr>
+      <tr>
+        <td><span class="method m-del">DELETE</span></td>
+        <td><span class="endpoint-path">/databases/{database_id}</span></td>
+        <td>Hard delete database. Returns 204.</td>
+        <td><span class="auth-badge auth-admin">superadmin</span></td>
+      </tr>
+    </tbody>
+  </table>
+
+  <!-- LAYER ENDPOINTS -->
+  <p style="font-size:11px;font-weight:700;color:#888;margin-bottom:6px;margin-top:14px">LAYERS — vector layer definitions (features stored separately)</p>
+  <table class="api-table">
+    <thead><tr><th style="width:70px">Method</th><th style="width:280px">Path</th><th>Description</th><th style="width:100px">Auth</th></tr></thead>
+    <tbody>
+      <tr>
+        <td><span class="method m-get">GET</span></td>
+        <td><span class="endpoint-path">/layers</span></td>
+        <td>List non-deleted layers. Query: <code>database_id</code>, <code>group_layer_id</code>. Sorted by <code>sort_order</code> then <code>name</code>.</td>
+        <td><span class="auth-badge auth-token">token</span></td>
+      </tr>
+      <tr>
+        <td><span class="method m-post">POST</span></td>
+        <td><span class="endpoint-path">/layers</span></td>
+        <td>Create layer. Body: <code>database_id</code>*, <code>name</code>*, <code>group_layer_id</code>, <code>description</code>, <code>srid</code>, <code>tags</code>, <code>sort_order</code>. Creator auto-assigned as primary owner. Returns 201.</td>
+        <td><span class="auth-badge auth-token">token</span></td>
+      </tr>
+      <tr>
+        <td><span class="method m-get">GET</span></td>
+        <td><span class="endpoint-path">/layers/{layer_id}</span></td>
+        <td>Get single layer.</td>
+        <td><span class="auth-badge auth-token">token</span></td>
+      </tr>
+      <tr>
+        <td><span class="method m-put">PUT</span></td>
+        <td><span class="endpoint-path">/layers/{layer_id}</span></td>
+        <td>Update layer metadata. Optional: <code>name</code>, <code>description</code>, <code>group_layer_id</code>, <code>tags</code>, <code>status</code> (draft/published/archived), <code>sort_order</code>.</td>
+        <td><span class="auth-badge auth-owner">write perm</span></td>
+      </tr>
+      <tr>
+        <td><span class="method m-del">DELETE</span></td>
+        <td><span class="endpoint-path">/layers/{layer_id}</span></td>
+        <td>Soft delete (<code>deleted_at = now()</code>). Returns 204. Never hard-deleted.</td>
+        <td><span class="auth-badge auth-owner">delete perm</span></td>
+      </tr>
+      <tr>
+        <td><span class="method m-post">POST</span></td>
+        <td><span class="endpoint-path">/layers/{layer_id}/lock</span></td>
+        <td>Lock layer — prevents all feature edits. Body: <code>{"reason":"..."}</code> (optional). 409 if already locked.</td>
+        <td><span class="auth-badge auth-owner">write perm</span></td>
+      </tr>
+      <tr>
+        <td><span class="method m-del">DELETE</span></td>
+        <td><span class="endpoint-path">/layers/{layer_id}/lock</span></td>
+        <td>Unlock layer. Only the user who locked it or a superadmin can unlock.</td>
+        <td><span class="auth-badge auth-owner">lock owner</span></td>
+      </tr>
+    </tbody>
+  </table>
+
+  <!-- FEATURE ENDPOINTS -->
+  <p style="font-size:11px;font-weight:700;color:#888;margin-bottom:6px;margin-top:14px">FEATURES — actual geometries + attribute data (geo_features DB, partitioned by layer_id)</p>
+  <table class="api-table">
+    <thead><tr><th style="width:70px">Method</th><th style="width:280px">Path</th><th>Description</th><th style="width:100px">Auth</th></tr></thead>
+    <tbody>
+      <tr>
+        <td><span class="method m-get">GET</span></td>
+        <td><span class="endpoint-path">/layers/{layer_id}/features</span></td>
+        <td>List features. Query: <code>limit</code> (def 1000), <code>offset</code>, <code>min_lon/min_lat/max_lon/max_lat</code> (bbox — all 4 required), <code>geometry_type</code>. Ordered by id.</td>
+        <td><span class="auth-badge auth-owner">read perm</span></td>
+      </tr>
+      <tr>
+        <td><span class="method m-get">GET</span></td>
+        <td><span class="endpoint-path">/layers/{layer_id}/features/{feature_id}</span></td>
+        <td>Get single feature.</td>
+        <td><span class="auth-badge auth-owner">read perm</span></td>
+      </tr>
+      <tr>
+        <td><span class="method m-post">POST</span></td>
+        <td><span class="endpoint-path">/layers/{layer_id}/features</span></td>
+        <td>Create feature. Body: <code>geom</code> (GeoJSON)*, <code>properties</code> (JSONB). Runs <code>ST_MakeValid</code>. Returns version=1, 201. 409 if locked.</td>
+        <td><span class="auth-badge auth-owner">write perm</span></td>
+      </tr>
+      <tr>
+        <td><span class="method m-put">PUT</span></td>
+        <td><span class="endpoint-path">/layers/{layer_id}/features/{feature_id}</span></td>
+        <td>Update feature with <strong>optimistic locking</strong>. Body: <code>version</code>* (must match server), <code>geom</code>, <code>properties</code>. Version mismatch → 409, records <code>SyncConflict</code>. Returns incremented version.</td>
+        <td><span class="auth-badge auth-owner">write perm</span></td>
+      </tr>
+      <tr>
+        <td><span class="method m-del">DELETE</span></td>
+        <td><span class="endpoint-path">/layers/{layer_id}/features/{feature_id}</span></td>
+        <td>Soft delete single feature. 409 if layer is locked. Returns 204.</td>
+        <td><span class="auth-badge auth-owner">delete perm</span></td>
+      </tr>
+      <tr>
+        <td><span class="method m-post">POST</span></td>
+        <td><span class="endpoint-path">/layers/{layer_id}/features/bulk-delete</span></td>
+        <td>Soft delete multiple features. Body: <code>{"feature_ids": [1,2,3]}</code>. Returns <code>{"deleted": N}</code>. 409 if locked.</td>
+        <td><span class="auth-badge auth-owner">delete perm</span></td>
+      </tr>
+    </tbody>
+  </table>
+
+  <!-- GROUP LAYERS -->
+  <p style="font-size:11px;font-weight:700;color:#888;margin-bottom:6px;margin-top:14px">GROUP-LAYERS — folder tree inside a database</p>
+  <table class="api-table">
+    <thead><tr><th style="width:70px">Method</th><th style="width:280px">Path</th><th>Description</th><th style="width:100px">Auth</th></tr></thead>
+    <tbody>
+      <tr>
+        <td><span class="method m-get">GET</span></td>
+        <td><span class="endpoint-path">/group-layers</span></td>
+        <td>List folders. Query: <code>database_id</code>. Sorted by <code>sort_order</code> then <code>name</code>.</td>
+        <td><span class="auth-badge auth-token">token</span></td>
+      </tr>
+      <tr>
+        <td><span class="method m-post">POST</span></td>
+        <td><span class="endpoint-path">/group-layers</span></td>
+        <td>Create folder. Body: <code>database_id</code>*, <code>name</code>*, <code>parent_id</code>, <code>description</code>, <code>tags</code>, <code>sort_order</code>. Returns 201.</td>
+        <td><span class="auth-badge auth-admin">superadmin</span></td>
+      </tr>
+      <tr>
+        <td><span class="method m-get">GET</span></td>
+        <td><span class="endpoint-path">/group-layers/{group_layer_id}</span></td>
+        <td>Get single folder.</td>
+        <td><span class="auth-badge auth-token">token</span></td>
+      </tr>
+      <tr>
+        <td><span class="method m-put">PUT</span></td>
+        <td><span class="endpoint-path">/group-layers/{group_layer_id}</span></td>
+        <td>Update. Optional: <code>name</code>, <code>description</code>, <code>tags</code>, <code>sort_order</code>, <code>parent_id</code>.</td>
+        <td><span class="auth-badge auth-admin">superadmin</span></td>
+      </tr>
+      <tr>
+        <td><span class="method m-del">DELETE</span></td>
+        <td><span class="endpoint-path">/group-layers/{group_layer_id}</span></td>
+        <td>Soft delete. Returns 204.</td>
+        <td><span class="auth-badge auth-admin">superadmin</span></td>
+      </tr>
+    </tbody>
+  </table>
+
+  <!-- PERMISSIONS -->
+  <p style="font-size:11px;font-weight:700;color:#888;margin-bottom:6px;margin-top:14px">PERMISSIONS — ACL system (exactly one principal × exactly one resource × role)</p>
+  <table class="api-table">
+    <thead><tr><th style="width:70px">Method</th><th style="width:280px">Path</th><th>Description</th><th style="width:100px">Auth</th></tr></thead>
+    <tbody>
+      <tr>
+        <td><span class="method m-get">GET</span></td>
+        <td><span class="endpoint-path">/roles</span></td>
+        <td>List all roles (viewer, editor, admin) with capability bitmasks.</td>
+        <td><span class="auth-badge auth-token">token</span></td>
+      </tr>
+      <tr>
+        <td><span class="method m-get">GET</span></td>
+        <td><span class="endpoint-path">/permissions</span></td>
+        <td>List permissions. Query: <code>layer_id</code>, <code>database_id</code>, or <code>group_layer_id</code>.</td>
+        <td><span class="auth-badge auth-token">token</span></td>
+      </tr>
+      <tr>
+        <td><span class="method m-post">POST</span></td>
+        <td><span class="endpoint-path">/permissions</span></td>
+        <td>Grant or deny. Body: one of <code>ms_user_id</code>/<code>ms_group_id</code>, one of <code>database_id</code>/<code>group_layer_id</code>/<code>layer_id</code>, <code>role_id</code>, <code>allow</code> (false = explicit deny). Returns 201. Non-superadmin can only grant on layers they have <code>manage_perms</code> for.</td>
+        <td><span class="auth-badge auth-owner">manage_perms</span></td>
+      </tr>
+      <tr>
+        <td><span class="method m-del">DELETE</span></td>
+        <td><span class="endpoint-path">/permissions/{permission_id}</span></td>
+        <td>Revoke permission. Returns 204.</td>
+        <td><span class="auth-badge auth-owner">manage_perms</span></td>
+      </tr>
+    </tbody>
+  </table>
+
+  <!-- SYMBOLOGY -->
+  <p style="font-size:11px;font-weight:700;color:#888;margin-bottom:6px;margin-top:14px">SYMBOLOGY — ArcGIS renderer/label/popup config per layer (JSONB) + .lyrx file upload</p>
+  <table class="api-table">
+    <thead><tr><th style="width:70px">Method</th><th style="width:280px">Path</th><th>Description</th><th style="width:100px">Auth</th></tr></thead>
+    <tbody>
+      <tr>
+        <td><span class="method m-get">GET</span></td>
+        <td><span class="endpoint-path">/layers/{layer_id}/styles</span></td>
+        <td>List all styles for a layer.</td>
+        <td><span class="auth-badge auth-token">token</span></td>
+      </tr>
+      <tr>
+        <td><span class="method m-post">POST</span></td>
+        <td><span class="endpoint-path">/layers/{layer_id}/styles</span></td>
+        <td>Create style. Body: <code>name</code>, <code>renderer</code> (ArcGIS JSON), <code>label_config</code>, <code>popup_config</code>, <code>is_default</code> (setting true clears all others). Returns 201.</td>
+        <td><span class="auth-badge auth-perm">manage_style</span></td>
+      </tr>
+      <tr>
+        <td><span class="method m-get">GET</span></td>
+        <td><span class="endpoint-path">/layers/{layer_id}/styles/{style_id}</span></td>
+        <td>Get single style.</td>
+        <td><span class="auth-badge auth-token">token</span></td>
+      </tr>
+      <tr>
+        <td><span class="method m-put">PUT</span></td>
+        <td><span class="endpoint-path">/layers/{layer_id}/styles/{style_id}</span></td>
+        <td>Update style. All fields optional.</td>
+        <td><span class="auth-badge auth-perm">manage_style</span></td>
+      </tr>
+      <tr>
+        <td><span class="method m-del">DELETE</span></td>
+        <td><span class="endpoint-path">/layers/{layer_id}/styles/{style_id}</span></td>
+        <td>Delete style. Returns 204.</td>
+        <td><span class="auth-badge auth-perm">manage_style</span></td>
+      </tr>
+      <tr>
+        <td><span class="method m-post">POST</span></td>
+        <td><span class="endpoint-path">/layers/{layer_id}/styles/{style_id}/lyrx</span></td>
+        <td>Upload ArcGIS <code>.lyrx</code> file. Multipart form-data. Stored in MinIO <code>geo-styles/</code>. Returns <code>{"key":"..."}</code>.</td>
+        <td><span class="auth-badge auth-perm">manage_style</span></td>
+      </tr>
+      <tr>
+        <td><span class="method m-get">GET</span></td>
+        <td><span class="endpoint-path">/layers/{layer_id}/styles/{style_id}/lyrx</span></td>
+        <td>Get presigned MinIO download URL. Returns <code>{"url":"..."}</code>.</td>
+        <td><span class="auth-badge auth-token">token</span></td>
+      </tr>
+    </tbody>
+  </table>
+
+  <!-- RASTERS -->
+  <p style="font-size:11px;font-weight:700;color:#888;margin-bottom:6px;margin-top:14px">RASTERS — Cloud-Optimized GeoTIFF catalog (metadata only; files stored in MinIO)</p>
+  <table class="api-table">
+    <thead><tr><th style="width:70px">Method</th><th style="width:280px">Path</th><th>Description</th><th style="width:100px">Auth</th></tr></thead>
+    <tbody>
+      <tr>
+        <td><span class="method m-get">GET</span></td>
+        <td><span class="endpoint-path">/rasters</span></td>
+        <td>List rasters. Query: <code>database_id</code>.</td>
+        <td><span class="auth-badge auth-token">token</span></td>
+      </tr>
+      <tr>
+        <td><span class="method m-post">POST</span></td>
+        <td><span class="endpoint-path">/rasters</span></td>
+        <td>Register raster. Body: <code>name</code>*, <code>s3_key</code>*, <code>format</code> (COG), <code>srid</code>, <code>resolution_m</code>, <code>band_count</code>, <code>database_id</code>, <code>group_layer_id</code>, <code>tags</code>. Returns 201.</td>
+        <td><span class="auth-badge auth-admin">superadmin</span></td>
+      </tr>
+      <tr>
+        <td><span class="method m-get">GET</span></td>
+        <td><span class="endpoint-path">/rasters/{raster_id}</span></td>
+        <td>Get single raster.</td>
+        <td><span class="auth-badge auth-token">token</span></td>
+      </tr>
+      <tr>
+        <td><span class="method m-put">PUT</span></td>
+        <td><span class="endpoint-path">/rasters/{raster_id}</span></td>
+        <td>Update. Optional: <code>name</code>, <code>tags</code>, <code>status</code>, <code>resolution_m</code>, <code>band_count</code>, <code>group_layer_id</code>.</td>
+        <td><span class="auth-badge auth-admin">superadmin</span></td>
+      </tr>
+      <tr>
+        <td><span class="method m-del">DELETE</span></td>
+        <td><span class="endpoint-path">/rasters/{raster_id}</span></td>
+        <td>Delete raster record. Returns 204.</td>
+        <td><span class="auth-badge auth-admin">superadmin</span></td>
+      </tr>
+    </tbody>
+  </table>
+
+  <!-- USERS -->
+  <p style="font-size:11px;font-weight:700;color:#888;margin-bottom:6px;margin-top:14px">USERS</p>
+  <table class="api-table">
+    <thead><tr><th style="width:70px">Method</th><th style="width:280px">Path</th><th>Description</th><th style="width:100px">Auth</th></tr></thead>
+    <tbody>
+      <tr>
+        <td><span class="method m-get">GET</span></td>
+        <td><span class="endpoint-path">/users</span></td>
+        <td>List users. Query: <code>is_active</code> (bool).</td>
+        <td><span class="auth-badge auth-admin">superadmin</span></td>
+      </tr>
+      <tr>
+        <td><span class="method m-get">GET</span></td>
+        <td><span class="endpoint-path">/users/me</span></td>
+        <td>Current user from token.</td>
+        <td><span class="auth-badge auth-token">token</span></td>
+      </tr>
+      <tr>
+        <td><span class="method m-get">GET</span></td>
+        <td><span class="endpoint-path">/users/{user_id}</span></td>
+        <td>Get user. Superadmin or self only.</td>
+        <td><span class="auth-badge auth-token">token</span></td>
+      </tr>
+      <tr>
+        <td><span class="method m-post">POST</span></td>
+        <td><span class="endpoint-path">/users/{user_id}/deactivate</span></td>
+        <td>Set <code>is_active=false</code>, <code>deactivated_at=now()</code>.</td>
+        <td><span class="auth-badge auth-admin">superadmin</span></td>
+      </tr>
+      <tr>
+        <td><span class="method m-post">POST</span></td>
+        <td><span class="endpoint-path">/users/{user_id}/activate</span></td>
+        <td>Reactivate user.</td>
+        <td><span class="auth-badge auth-admin">superadmin</span></td>
+      </tr>
+      <tr>
+        <td><span class="method m-post">POST</span></td>
+        <td><span class="endpoint-path">/users/{user_id}/make-superadmin</span></td>
+        <td>Grant superadmin flag.</td>
+        <td><span class="auth-badge auth-admin">superadmin</span></td>
+      </tr>
+    </tbody>
+  </table>
+
+  <!-- GROUPS -->
+  <p style="font-size:11px;font-weight:700;color:#888;margin-bottom:6px;margin-top:14px">CUSTOM GROUPS — platform groups with hierarchy + MS Entra link-in</p>
+  <table class="api-table">
+    <thead><tr><th style="width:70px">Method</th><th style="width:280px">Path</th><th>Description</th><th style="width:100px">Auth</th></tr></thead>
+    <tbody>
+      <tr>
+        <td><span class="method m-get">GET</span></td>
+        <td><span class="endpoint-path">/groups</span></td>
+        <td>List all custom groups flat.</td>
+        <td><span class="auth-badge auth-token">token</span></td>
+      </tr>
+      <tr>
+        <td><span class="method m-get">GET</span></td>
+        <td><span class="endpoint-path">/groups/tree</span></td>
+        <td>Groups as a recursive tree (children nested under parents).</td>
+        <td><span class="auth-badge auth-token">token</span></td>
+      </tr>
+      <tr>
+        <td><span class="method m-post">POST</span></td>
+        <td><span class="endpoint-path">/groups</span></td>
+        <td>Create group. Body: <code>display_name</code>*, <code>description</code>, <code>parent_group_id</code>.</td>
+        <td><span class="auth-badge auth-token">token</span></td>
+      </tr>
+      <tr>
+        <td><span class="method m-put">PUT</span></td>
+        <td><span class="endpoint-path">/groups/{group_id}</span></td>
+        <td>Update group. Optional: <code>display_name</code>, <code>description</code>.</td>
+        <td><span class="auth-badge auth-token">token</span></td>
+      </tr>
+      <tr>
+        <td><span class="method m-post">POST</span></td>
+        <td><span class="endpoint-path">/groups/{group_id}/move</span></td>
+        <td>Re-parent group. Body: <code>{"parent_group_id": "uuid or null"}</code>. Validates no cycles.</td>
+        <td><span class="auth-badge auth-token">token</span></td>
+      </tr>
+      <tr>
+        <td><span class="method m-get">GET</span></td>
+        <td><span class="endpoint-path">/groups/{group_id}/members</span></td>
+        <td>List manually-added users in this group.</td>
+        <td><span class="auth-badge auth-token">token</span></td>
+      </tr>
+      <tr>
+        <td><span class="method m-post">POST</span></td>
+        <td><span class="endpoint-path">/groups/{group_id}/members</span></td>
+        <td>Add user. Body: <code>{"user_id": "uuid"}</code>.</td>
+        <td><span class="auth-badge auth-token">token</span></td>
+      </tr>
+      <tr>
+        <td><span class="method m-del">DELETE</span></td>
+        <td><span class="endpoint-path">/groups/{group_id}/members/{user_id}</span></td>
+        <td>Remove user from group. Returns 204.</td>
+        <td><span class="auth-badge auth-token">token</span></td>
+      </tr>
+      <tr>
+        <td><span class="method m-get">GET</span></td>
+        <td><span class="endpoint-path">/groups/{group_id}/ms-links</span></td>
+        <td>List MS Entra groups linked to this custom group.</td>
+        <td><span class="auth-badge auth-token">token</span></td>
+      </tr>
+      <tr>
+        <td><span class="method m-post">POST</span></td>
+        <td><span class="endpoint-path">/groups/{group_id}/ms-links</span></td>
+        <td>Link Entra group. Body: <code>ms_group_id</code>*, <code>ms_display_name</code>. Members of the Entra group are treated as members of this custom group in ACL resolution.</td>
+        <td><span class="auth-badge auth-token">token</span></td>
+      </tr>
+      <tr>
+        <td><span class="method m-del">DELETE</span></td>
+        <td><span class="endpoint-path">/groups/{group_id}/ms-links/{ms_group_id}</span></td>
+        <td>Unlink Entra group. Returns 204.</td>
+        <td><span class="auth-badge auth-token">token</span></td>
+      </tr>
+    </tbody>
+  </table>
+
+  <!-- SYNC -->
+  <p style="font-size:11px;font-weight:700;color:#888;margin-bottom:6px;margin-top:14px">SYNC — Argo offline app: snapshot → [work offline] → delta → push</p>
+  <table class="api-table">
+    <thead><tr><th style="width:70px">Method</th><th style="width:280px">Path</th><th>Description</th><th style="width:100px">Auth</th></tr></thead>
+    <tbody>
+      <tr>
+        <td><span class="method m-post">POST</span></td>
+        <td><span class="endpoint-path">/sync/snapshot</span></td>
+        <td>Download all features for requested layers. Body: <code>layer_ids[]</code>*, <code>device_id</code>*, <code>geometry_type</code>. Creates <code>SyncSnapshot</code> with 72h TTL. Returns <code>features_by_layer</code> + snapshot metadata per layer.</td>
+        <td><span class="auth-badge auth-owner">read perm</span></td>
+      </tr>
+      <tr>
+        <td><span class="method m-get">GET</span></td>
+        <td><span class="endpoint-path">/sync/delta/{layer_id}</span></td>
+        <td>Changes since last snapshot. Query: <code>device_id</code>*, <code>geometry_type</code>. Returns <code>{"updated":[...], "deleted":[id,...]}</code>. 410 Gone if snapshot expired.</td>
+        <td><span class="auth-badge auth-owner">read perm</span></td>
+      </tr>
+      <tr>
+        <td><span class="method m-post">POST</span></td>
+        <td><span class="endpoint-path">/sync/push</span></td>
+        <td>Apply offline edits. Body: <code>device_id</code>*, <code>edits[]</code> (each: <code>feature_id</code>, <code>layer_id</code>, <code>operation</code> create/update/delete, <code>version</code> for update/delete, <code>geom</code>, <code>properties</code>). Returns <code>{"succeeded":[], "conflicts":[], "failed":[]}</code>. Conflicts recorded in <code>sync_conflicts</code>.</td>
+        <td><span class="auth-badge auth-owner">write perm</span></td>
+      </tr>
+      <tr>
+        <td><span class="method m-get">GET</span></td>
+        <td><span class="endpoint-path">/sync/status/{layer_id}</span></td>
+        <td>Snapshot health for a device. Query: <code>device_id</code>*. Returns age, expiry, and pending conflict count.</td>
+        <td><span class="auth-badge auth-owner">read perm</span></td>
+      </tr>
+    </tbody>
+  </table>
+
+  <!-- HEALTH -->
+  <p style="font-size:11px;font-weight:700;color:#888;margin-bottom:6px;margin-top:14px">HEALTH</p>
+  <table class="api-table">
+    <thead><tr><th style="width:70px">Method</th><th style="width:280px">Path</th><th>Description</th><th style="width:100px">Auth</th></tr></thead>
+    <tbody>
+      <tr>
+        <td><span class="method m-get">GET</span></td>
+        <td><span class="endpoint-path">/health</span></td>
+        <td>Returns <code>{"status":"ok"}</code>. Used by Docker healthchecks and load balancers.</td>
+        <td><span class="auth-badge auth-open">open</span></td>
+      </tr>
+    </tbody>
+  </table>
+
+  <!-- PYDANTIC SCHEMAS -->
+  <h2>Pydantic schemas — request validation &amp; response shaping</h2>
+  <p class="section-note">All schemas in <code>api/app/schemas/</code>. Pydantic v2. * = required field.</p>
+
+  <div class="schema-grid">
+    <div class="schema-card">
+      <div class="schema-head">schemas/layers.py</div>
+      <div class="schema-body">
+        <div class="schema-row"><span class="schema-field">LayerCreate</span><span class="schema-type">POST /layers body</span></div>
+        <div class="schema-row"><span class="schema-field">LayerUpdate</span><span class="schema-type">PUT /layers/{id} body — all optional</span></div>
+        <div class="schema-row"><span class="schema-field">LayerLockRequest</span><span class="schema-type">POST /layers/{id}/lock body</span></div>
+        <div class="schema-row"><span class="schema-field">LayerResponse</span><span class="schema-type">all layer responses</span></div>
+      </div>
+    </div>
+    <div class="schema-card">
+      <div class="schema-head">schemas/features.py</div>
+      <div class="schema-body">
+        <div class="schema-row"><span class="schema-field">FeatureCreate</span><span class="schema-type">POST .../features body</span></div>
+        <div class="schema-row"><span class="schema-field">FeatureUpdate</span><span class="schema-type">PUT .../features/{id} — version required</span></div>
+        <div class="schema-row"><span class="schema-field">BulkDeleteRequest</span><span class="schema-type">POST .../features/bulk-delete</span></div>
+        <div class="schema-row"><span class="schema-field">FeatureResponse</span><span class="schema-type">all feature responses</span></div>
+      </div>
+    </div>
+    <div class="schema-card">
+      <div class="schema-head">schemas/permissions.py</div>
+      <div class="schema-body">
+        <div class="schema-row"><span class="schema-field">PermissionGrant</span><span class="schema-type">POST /permissions body</span></div>
+        <div class="schema-row"><span class="schema-field">PermissionResponse</span><span class="schema-type">all permission responses</span></div>
+        <div class="schema-row"><span class="schema-field">RoleResponse</span><span class="schema-type">GET /roles response</span></div>
+      </div>
+    </div>
+    <div class="schema-card">
+      <div class="schema-head">schemas/symbology.py</div>
+      <div class="schema-body">
+        <div class="schema-row"><span class="schema-field">StyleCreate</span><span class="schema-type">POST .../styles body</span></div>
+        <div class="schema-row"><span class="schema-field">StyleUpdate</span><span class="schema-type">PUT .../styles/{id} — all optional</span></div>
+        <div class="schema-row"><span class="schema-field">StyleResponse</span><span class="schema-type">all style responses</span></div>
+      </div>
+    </div>
+    <div class="schema-card">
+      <div class="schema-head">schemas/users.py</div>
+      <div class="schema-body">
+        <div class="schema-row"><span class="schema-field">UserResponse</span><span class="schema-type">all user responses</span></div>
+      </div>
+    </div>
+    <div class="schema-card">
+      <div class="schema-head">schemas/sync.py</div>
+      <div class="schema-body">
+        <div class="schema-row"><span class="schema-field">SnapshotRequest</span><span class="schema-type">POST /sync/snapshot body</span></div>
+        <div class="schema-row"><span class="schema-field">PushRequest</span><span class="schema-type">POST /sync/push body</span></div>
+        <div class="schema-row"><span class="schema-field">EditItem</span><span class="schema-type">one edit within PushRequest</span></div>
+        <div class="schema-row"><span class="schema-field">DeltaResponse</span><span class="schema-type">GET /sync/delta response</span></div>
+        <div class="schema-row"><span class="schema-field">PushResponse</span><span class="schema-type">POST /sync/push response</span></div>
+        <div class="schema-row"><span class="schema-field">SyncStatusResponse</span><span class="schema-type">GET /sync/status response</span></div>
+        <div class="schema-row"><span class="schema-field">ConflictItem</span><span class="schema-type">one conflict in PushResponse</span></div>
+        <div class="schema-row"><span class="schema-field">FailedItem</span><span class="schema-type">one failure in PushResponse</span></div>
+      </div>
+    </div>
+  </div>
+
+  <!-- DATABASES -->
+  <h2>What each database holds</h2>
+  <div class="row">
+    <div class="card">
+      <div class="card-head h-gray">geo_meta — port 5432 (via pgbouncer :6432)</div>
+      <div class="card-body">
+        <div class="item"><span class="dot dg"></span>users + ms_groups <span class="tag tag-fast">always small</span></div>
+        <div class="item"><span class="dot dg"></span>custom_group_members + custom_group_ms_links</div>
+        <div class="item"><span class="dot dg"></span>roles + permissions</div>
+        <div class="item"><span class="dot dg"></span>geo_databases + group_layers</div>
+        <div class="item"><span class="dot dg"></span>layers (metadata only — shard_id, lock state, bbox)</div>
+        <div class="item"><span class="dot dg"></span>layer_styles + layer_schema + layer_owners</div>
+        <div class="item"><span class="dot dg"></span>raster_catalog</div>
+        <div class="item"><span class="dot dg"></span>audit_log + layer_events</div>
+        <div class="item"><span class="dot dg"></span>sync_snapshots + sync_conflicts + failed_syncs</div>
+        <div class="item"><span class="dot dg"></span>group_quotas</div>
+        <div class="divider"></div>
+        <div class="item"><span class="dot dg"></span><strong>21 tables total. Never stores geometries.</strong></div>
+      </div>
+    </div>
+    <div class="card">
+      <div class="card-head h-coral">geo_features — port 5433 (shard 0, direct connection)</div>
+      <div class="card-body">
+        <div class="item"><span class="dot dc"></span>features table <span class="tag tag-big">all the geometries</span></div>
+        <div class="item"><span class="dot dc"></span><code>PARTITION BY HASH(layer_id)</code></div>
+        <div class="item"><span class="dot dc"></span>32 hash partitions: features_p0…p31</div>
+        <div class="item"><span class="dot dc"></span>GIST index on geom (spatial queries)</div>
+        <div class="item"><span class="dot dc"></span>GIN index on properties JSONB</div>
+        <div class="item"><span class="dot dc"></span>B-tree on layer_id + updated_at (delta sync)</div>
+        <div class="divider"></div>
+        <div class="item"><span class="dot dc"></span><code>ST_MakeValid</code> run on every insert</div>
+        <div class="item"><span class="dot dc"></span><code>version INT</code> for optimistic locking</div>
+        <div class="item"><span class="dot dc"></span><code>deleted_at</code> for soft deletes</div>
+        <div class="item"><span class="dot dc"></span><strong>Always include layer_id in WHERE</strong></div>
+        <div class="divider"></div>
+        <div class="item"><span class="dot dc"></span>Code supports more shards via <code>features_shard_N_url</code> in config — no code change needed to add one</div>
+      </div>
+    </div>
+    <div class="card">
+      <div class="card-head h-amber">MinIO — port 9000 (console :9001)</div>
+      <div class="card-body">
+        <div class="item"><span class="dot da"></span><strong>geo-styles/</strong> — .lyrx files per style</div>
+        <div class="item"><span class="dot da"></span><strong>geo-rasters/</strong> — COG GeoTIFFs</div>
+        <div class="item"><span class="dot da"></span><strong>geo-exports/</strong> — GPKG, GeoJSON, .tpkx</div>
+        <div class="divider"></div>
+        <div class="item"><span class="dot da"></span>Only S3 key stored in PostgreSQL</div>
+        <div class="item"><span class="dot da"></span>Presigned URLs generated at request time</div>
+        <div class="item"><span class="dot da"></span>Never store full URLs in the DB</div>
+      </div>
+    </div>
+  </div>
+
+  <!-- PERMISSION MODEL -->
+  <h2>Permission model — ACL with hierarchy cascading, deny wins</h2>
+  <div class="row">
+    <div class="card" style="min-width:300px">
+      <div class="card-head h-red">Roles (built-in)</div>
+      <div class="card-body">
+        <div class="item"><span class="dot dr"></span><strong>viewer</strong> — read</div>
+        <div class="item"><span class="dot dr"></span><strong>editor</strong> — read, write, delete, export</div>
+        <div class="item"><span class="dot dr"></span><strong>admin</strong> — read, write, delete, export, manage_style, manage_perms, publish</div>
+        <div class="divider"></div>
+        <div class="item"><span class="dot dr"></span>Custom roles possible via <code>roles</code> table</div>
+      </div>
+    </div>
+    <div class="card" style="min-width:300px">
+      <div class="card-head h-red">permissions table structure</div>
+      <div class="card-body">
+        <div class="item"><span class="dot dr"></span>Principal: <code>ms_user_id</code> XOR <code>ms_group_id</code></div>
+        <div class="item"><span class="dot dr"></span>Resource: <code>database_id</code> XOR <code>group_layer_id</code> XOR <code>layer_id</code></div>
+        <div class="item"><span class="dot dr"></span>Role: FK to <code>roles</code></div>
+        <div class="item"><span class="dot dr"></span><code>allow: bool</code> — false = explicit deny</div>
+        <div class="divider"></div>
+        <div class="item"><span class="dot dr"></span>database permission cascades live to all layers</div>
+        <div class="item"><span class="dot dr"></span>No materialization — always resolved at query time</div>
+      </div>
+    </div>
+    <div class="card" style="min-width:300px">
+      <div class="card-head h-red">can_user_do() — PostgreSQL function</div>
+      <div class="card-body">
+        <div class="item"><span class="dot dr"></span>Args: <code>ms_object_id, ms_group_ids[], layer_id, operation</code></div>
+        <div class="item"><span class="dot dr"></span>1. Walk: layer → group_layer → database</div>
+        <div class="item"><span class="dot dr"></span>2. Check user + all group entries at each level</div>
+        <div class="item"><span class="dot dr"></span>3. Any matching deny → return false</div>
+        <div class="item"><span class="dot dr"></span>4. Any matching allow → return true</div>
+        <div class="item"><span class="dot dr"></span>5. No match → false (implicit deny)</div>
+        <div class="divider"></div>
+        <div class="item"><span class="dot dr"></span>Superadmin bypasses entirely</div>
+        <div class="item"><span class="dot dr"></span>Python wrapper in <code>auth/permissions.py</code></div>
+      </div>
+    </div>
+  </div>
+
+  <!-- HOW A QUERY FLOWS -->
+  <h2>How a feature query flows through the system</h2>
+  <div class="flow">
+    <p style="font-size:12px;color:#888;margin-bottom:16px">Example: Argo requests features in a bounding box for layer X</p>
+    <div class="query-step">
+      <div class="qbox q-blue">1. GET /layers/{id}/features?min_lon=…&amp;max_lon=…</div>
+      <div class="qarrow">→</div>
+      <div class="qbox q-gray">JWT validated (no network call)</div>
+      <div class="q-time">~0ms</div>
+    </div>
+    <div class="query-step">
+      <div class="qbox q-teal">2. can_user_do(user, groups[], layer_id, 'read')</div>
+      <div class="qarrow">→</div>
+      <div class="qbox q-gray">PostgreSQL function via metadata DB</div>
+      <div class="q-time">~2ms (Redis cached)</div>
+    </div>
+    <div class="query-step">
+      <div class="qbox q-teal">3. Read layer.shard_id from metadata</div>
+      <div class="qarrow">→</div>
+      <div class="qbox q-gray">shard_id = 0 → connect to geo_features :5433</div>
+      <div class="q-time">~1ms (Redis cached)</div>
+    </div>
+    <div class="query-step">
+      <div class="qbox q-coral">4. Query geo_features, partition features_pN</div>
+      <div class="qarrow">→</div>
+      <div class="qbox q-gray">SELECT … WHERE layer_id=X AND ST_Intersects(geom, bbox)</div>
+      <div class="q-time">~10–50ms (GIST index)</div>
+    </div>
+    <div class="query-step">
+      <div class="qbox q-green">5. Return GeoJSON FeatureResponse[]</div>
+      <div class="q-time">Total: ~15–55ms</div>
+    </div>
+  </div>
+
+  <!-- PERMISSION FLOW -->
+  <h2>How a write request flows through the system</h2>
+  <div class="flow">
+    <p style="font-size:12px;color:#888;margin-bottom:16px">Example: Argo pushes an edit — PUT /layers/{id}/features/{fid}</p>
+    <div class="query-step">
+      <div class="qbox q-blue">1. Extract RequestContext from JWT (ms_object_id, ms_group_ids)</div>
+      <div class="q-time">~0ms</div>
+    </div>
+    <div class="query-step">
+      <div class="qbox q-teal">2. can_user_do(…, 'write') on the layer</div>
+      <div class="qarrow">→</div>
+      <div class="qbox q-gray">Deny → 403. No match → 403.</div>
+      <div class="q-time">~2ms</div>
+    </div>
+    <div class="query-step">
+      <div class="qbox q-teal">3. Check layer.is_locked</div>
+      <div class="qarrow">→</div>
+      <div class="qbox q-gray">Locked → 409 Conflict. Stop.</div>
+      <div class="q-time">~1ms</div>
+    </div>
+    <div class="query-step">
+      <div class="qbox q-coral">4. UPDATE … WHERE id=X AND version=client_version AND deleted_at IS NULL</div>
+      <div class="qarrow">→</div>
+      <div class="qbox q-gray">0 rows → version mismatch → 409, write SyncConflict</div>
+      <div class="q-time">~5–20ms</div>
+    </div>
+    <div class="query-step">
+      <div class="qbox q-green">5. Write audit_log (async, non-blocking)</div>
+      <div class="q-time">~0ms overhead</div>
+    </div>
+  </div>
+
+  <!-- SYNC FLOW -->
+  <h2>Argo offline sync flow</h2>
+  <div class="flow">
+    <div class="query-step">
+      <div class="qbox q-blue">Device: POST /sync/snapshot</div>
+      <div class="qarrow">→</div>
+      <div class="qbox q-gray">Server creates SyncSnapshot (TTL 72h), returns all features</div>
+    </div>
+    <div class="query-step" style="margin-left:24px;color:#aaa;font-size:12px;margin-bottom:8px">
+      ↓ device works offline — may take hours or days
+    </div>
+    <div class="query-step">
+      <div class="qbox q-blue">Device: GET /sync/delta/{layer_id}?device_id=…</div>
+      <div class="qarrow">→</div>
+      <div class="qbox q-gray">Returns features updated/deleted since snapshotted_at. 410 if expired.</div>
+    </div>
+    <div class="query-step">
+      <div class="qbox q-blue">Device: POST /sync/push</div>
+      <div class="qarrow">→</div>
+      <div class="qbox q-gray">Applies create/update/delete with optimistic locking</div>
+    </div>
+    <div class="query-step">
+      <div class="qbox q-coral">Server response</div>
+      <div class="qarrow">→</div>
+      <div class="qbox q-gray">{"succeeded":[…], "conflicts":[…], "failed":[…]}</div>
+    </div>
+    <div class="query-step" style="margin-top:8px">
+      <div class="qbox q-green">Conflicts stored in sync_conflicts for manual resolution</div>
+    </div>
+  </div>
+
+  <!-- VERDICTS -->
+  <h2>Design decisions — will it work well?</h2>
+  <div class="verdict verdict-ok">
+    <strong>✓ Metadata DB stays fast no matter how big features grow.</strong>&nbsp;
+    Every permission check, layer list, and dashboard load hits only the small metadata DB. Feature shards never affect metadata operations.
+  </div>
+  <div class="verdict verdict-ok">
+    <strong>✓ Feature queries never slow down as more layers are added.</strong>&nbsp;
+    Every query includes <code>layer_id</code>, so PostgreSQL hits exactly one of 32 partitions. Adding 10,000 more layers doesn't affect query time for existing layers.
+  </div>
+  <div class="verdict verdict-ok">
+    <strong>✓ Scaling from Tier 1 to Tier 3 requires zero code changes.</strong>&nbsp;
+    Add shards to config, run a migration script to move data. The API shard router never changes.
+  </div>
+  <div class="verdict verdict-ok">
+    <strong>✓ Argo offline sync is isolated.</strong>&nbsp;
+    Syncing one device's layers doesn't affect other devices or other shards.
+  </div>
+  <div class="verdict verdict-ok">
+    <strong>✓ Mixed layer sizes handled identically.</strong>&nbsp;
+    A 5-row layer and a 500,000-row layer use the same indexes and queries. No per-layer tuning needed.
+  </div>
+  <div class="verdict verdict-ok">
+    <strong>✓ Conflict data is never silently lost.</strong>&nbsp;
+    Every optimistic lock mismatch creates a <code>sync_conflicts</code> row. Clients get a structured conflict response. Resolution is explicit and tracked.
+  </div>
+  <div class="verdict verdict-warn">
+    <strong>! Metadata DB is a single point of failure.</strong>&nbsp;
+    If it goes down, everything stops. Mitigate in production with a hot standby replica. Not needed for local dev.
+  </div>
+  <div class="verdict verdict-warn">
+    <strong>! Custom group hierarchy not yet inherited in ACL.</strong>&nbsp;
+    MS-linked groups don't walk <code>parent_group_id</code> upward. A permission on a parent group does not yet flow to child groups. Tracked in permission_plan.md.
+  </div>
+
+  <!-- LOCAL DEV -->
+  <h2>Local development setup (Windows + Docker)</h2>
+  <div class="row">
+    <div class="card">
+      <div class="card-head h-green">docker-compose services</div>
+      <div class="card-body">
+        <div class="item"><span class="dot dv"></span><code>postgres_meta</code> → port 5432</div>
+        <div class="item"><span class="dot dv"></span><code>postgres_features</code> → port 5433</div>
+        <div class="item"><span class="dot dv"></span><code>pgbouncer</code> → port 6432</div>
+        <div class="item"><span class="dot dv"></span><code>redis</code> → port 6379</div>
+        <div class="item"><span class="dot dv"></span><code>minio</code> → port 9000 / 9001</div>
+        <div class="divider"></div>
+        <div class="item"><span class="dot dv"></span><code>docker compose up -d</code></div>
+      </div>
+    </div>
+    <div class="card">
+      <div class="card-head h-green">API (FastAPI)</div>
+      <div class="card-body">
+        <div class="item"><span class="dot dv"></span><code>python run.py</code> (sets SelectorEventLoop)</div>
+        <div class="item"><span class="dot dv"></span>Or: <code>uvicorn app.main:app --reload</code></div>
+        <div class="item"><span class="dot dv"></span>Port 8000 · Swagger at <code>/docs</code></div>
+        <div class="item"><span class="dot dv"></span>Set <code>dev_mode=true</code> in <code>.env</code></div>
+        <div class="item"><span class="dot dv"></span>Use <code>GET /auth/auto-login</code> to get token</div>
+      </div>
+    </div>
+    <div class="card">
+      <div class="card-head h-green">Web app (React)</div>
+      <div class="card-body">
+        <div class="item"><span class="dot dv"></span><code>cd web &amp;&amp; npm run dev</code></div>
+        <div class="item"><span class="dot dv"></span>Port 5173 · Hot reload</div>
+        <div class="item"><span class="dot dv"></span>Proxies API calls to port 8000</div>
+      </div>
+    </div>
+    <div class="card">
+      <div class="card-head h-green">Alembic migrations</div>
+      <div class="card-body">
+        <div class="item"><span class="dot dv"></span><code>alembic upgrade heads</code></div>
+        <div class="item"><span class="dot dv"></span>Creates all 21 meta tables + feature partitions</div>
+        <div class="item"><span class="dot dv"></span>Seeds built-in roles (viewer, editor, admin)</div>
+        <div class="item"><span class="dot dv"></span>Creates <code>can_user_do()</code> PostgreSQL function</div>
+        <div class="item"><span class="dot dv"></span>Run once on first setup</div>
+      </div>
+    </div>
+  </div>
+
+  <p style="font-size:11px;color:#aaa;margin-top:40px;text-align:center">Geo Platform Architecture · Updated from source · FastAPI + SQLAlchemy 2.0 + PostgreSQL 16 + PostGIS 3.4</p>
+
+</div>
+</body>
+</html>
