@@ -70,6 +70,7 @@
   }
   nav a:hover { color: var(--text); background: rgba(88,166,255,0.1); }
   nav a.sub { padding-left: 28px; font-size: 13px; }
+  nav a.sub2 { padding-left: 44px; font-size: 12px; }
 
   /* --- MAIN --- */
   main {
@@ -316,6 +317,16 @@
   <a href="#migration">6. Migration Strategy</a>
   <a href="#files">7. Files to Modify</a>
   <a href="#verification">8. Verification</a>
+  <a href="#search">9. Search Engine</a>
+  <a href="#search-db" class="sub">DB Changes</a>
+  <a href="#search-api" class="sub">API Endpoint</a>
+  <a href="#audit">10. Audit Logs</a>
+  <a href="#audit-wire" class="sub">Wiring log()</a>
+  <a href="#audit-endpoint" class="sub">GET /audit</a>
+  <a href="#perm-audit">11. Permission Audit</a>
+  <a href="#stats">12. Usage Statistics</a>
+  <a href="#stats-db" class="sub">DB Changes</a>
+  <a href="#stats-endpoints" class="sub">Stats Endpoints</a>
 </nav>
 
 <main>
@@ -942,6 +953,330 @@ cd web && npm run dev</code></pre>
   <li>Group hierarchy: user in child group, permission on parent group &rarr; user has access.</li>
   <li>Open map &rarr; single API call returns all accessible layers with effective roles.</li>
 </ul>
+</section>
+
+<!-- ============================================================ -->
+<!-- 9. SEARCH ENGINE -->
+<!-- ============================================================ -->
+<section id="search">
+<h2>9. Search Engine (Tags + Full Text)</h2>
+
+<div class="callout">
+  <strong>What exists:</strong> <code>tags TEXT[]</code> with GIN indexes on all tables — but <strong>zero search endpoints</strong>. No <code>tsvector</code> or full-text search anywhere in the codebase. The catalog frontend is ready; the backend is not.
+</div>
+
+<h3 id="search-db">DB Changes <span style="color:var(--text-muted);font-weight:400;font-size:14px">(migration 008_search_and_stats.py)</span></h3>
+<p>Add a <code>GENERATED ALWAYS AS … STORED</code> tsvector column to every resource table. Uses the <code>simple</code> dictionary (no stemming — correct for place names and GIS layer names).</p>
+
+<pre><code><span class="cm">-- Add generated full-text search columns</span>
+<span class="kw">ALTER TABLE</span> workspaces <span class="kw">ADD COLUMN</span> search_vector <span class="ty">tsvector</span>
+    <span class="kw">GENERATED ALWAYS AS</span> (
+        <span class="fn">to_tsvector</span>(<span class="str">'simple'</span>, <span class="fn">coalesce</span>(name,<span class="str">''</span>) || <span class="str">' '</span> || <span class="fn">coalesce</span>(description,<span class="str">''</span>))
+    ) <span class="kw">STORED</span>;
+
+<span class="kw">ALTER TABLE</span> folders <span class="kw">ADD COLUMN</span> search_vector <span class="ty">tsvector</span>
+    <span class="kw">GENERATED ALWAYS AS</span> (
+        <span class="fn">to_tsvector</span>(<span class="str">'simple'</span>, <span class="fn">coalesce</span>(name,<span class="str">''</span>) || <span class="str">' '</span> || <span class="fn">coalesce</span>(description,<span class="str">''</span>))
+    ) <span class="kw">STORED</span>;
+
+<span class="kw">ALTER TABLE</span> maps <span class="kw">ADD COLUMN</span> search_vector <span class="ty">tsvector</span>
+    <span class="kw">GENERATED ALWAYS AS</span> (
+        <span class="fn">to_tsvector</span>(<span class="str">'simple'</span>, <span class="fn">coalesce</span>(name,<span class="str">''</span>) || <span class="str">' '</span> || <span class="fn">coalesce</span>(description,<span class="str">''</span>))
+    ) <span class="kw">STORED</span>;
+
+<span class="kw">ALTER TABLE</span> layers <span class="kw">ADD COLUMN</span> search_vector <span class="ty">tsvector</span>
+    <span class="kw">GENERATED ALWAYS AS</span> (
+        <span class="fn">to_tsvector</span>(<span class="str">'simple'</span>, <span class="fn">coalesce</span>(name,<span class="str">''</span>) || <span class="str">' '</span> || <span class="fn">coalesce</span>(description,<span class="str">''</span>))
+    ) <span class="kw">STORED</span>;
+
+<span class="kw">CREATE INDEX</span> workspaces_search_idx <span class="kw">ON</span> workspaces <span class="kw">USING</span> <span class="fn">GIN</span>(search_vector);
+<span class="kw">CREATE INDEX</span> folders_search_idx    <span class="kw">ON</span> folders    <span class="kw">USING</span> <span class="fn">GIN</span>(search_vector);
+<span class="kw">CREATE INDEX</span> maps_search_idx       <span class="kw">ON</span> maps       <span class="kw">USING</span> <span class="fn">GIN</span>(search_vector);
+<span class="kw">CREATE INDEX</span> layers_search_idx     <span class="kw">ON</span> layers     <span class="kw">USING</span> <span class="fn">GIN</span>(search_vector);</code></pre>
+
+<div class="callout">
+  <strong>Note:</strong> Tags GIN indexes already exist on all tables. No new tag indexes needed.
+</div>
+
+<h3>Search SQL Function</h3>
+<pre><code><span class="kw">CREATE OR REPLACE FUNCTION</span> <span class="fn">search_resources</span>(
+    p_user_id    <span class="ty">UUID</span>,
+    p_group_ids  <span class="ty">UUID[]</span>,
+    p_query      <span class="ty">TEXT</span>,        <span class="cm">-- NULL = no text filter</span>
+    p_tags       <span class="ty">TEXT[]</span>,      <span class="cm">-- NULL = no tag filter; uses && (overlap, not subset)</span>
+    p_types      <span class="ty">TEXT[]</span>,      <span class="cm">-- NULL = all types</span>
+    p_workspace_id <span class="ty">UUID</span>,      <span class="cm">-- NULL = all workspaces</span>
+    p_limit      <span class="ty">INT</span> <span class="kw">DEFAULT</span> <span class="num">20</span>,
+    p_offset     <span class="ty">INT</span> <span class="kw">DEFAULT</span> <span class="num">0</span>
+) <span class="kw">RETURNS TABLE</span> (
+    resource_type <span class="ty">TEXT</span>, resource_id <span class="ty">UUID</span>,
+    name <span class="ty">TEXT</span>, description <span class="ty">TEXT</span>, tags <span class="ty">TEXT[]</span>,
+    workspace_id <span class="ty">UUID</span>, workspace_name <span class="ty">TEXT</span>,
+    rank <span class="ty">FLOAT4</span>
+) <span class="kw">AS</span> $$
+<span class="cm">-- UNION ALL across workspaces, folders, maps, layers</span>
+<span class="cm">-- Each branch applies:</span>
+<span class="cm">--   1. Text: p_query IS NULL OR search_vector @@ plainto_tsquery('simple', p_query)</span>
+<span class="cm">--   2. Tags:  p_tags  IS NULL OR tags && p_tags</span>
+<span class="cm">--   3. Type:  p_types IS NULL OR 'layer' = ANY(p_types)</span>
+<span class="cm">--   4. Perms: user has role on resource OR is_public = TRUE (maps/layers only)</span>
+<span class="cm">-- ORDER BY ts_rank(search_vector, query) DESC when q is set, else updated_at DESC</span>
+$$ <span class="kw">LANGUAGE</span> sql <span class="kw">STABLE</span>;</code></pre>
+
+<h3 id="search-api">API Endpoint</h3>
+<pre><code>GET /search?q=roads&tags=infrastructure,city&type=layer,map&workspace_id=X&limit=20&offset=0</code></pre>
+
+<table>
+  <thead><tr><th>Param</th><th>Description</th></tr></thead>
+  <tbody>
+    <tr><td><code>q</code></td><td>Free text (matches name + description via <code>tsvector</code>)</td></tr>
+    <tr><td><code>tags</code></td><td>Comma-separated. Returns resources that have <strong>any</strong> of these tags (overlap)</td></tr>
+    <tr><td><code>type</code></td><td>Comma-separated filter: <code>workspace</code>, <code>folder</code>, <code>map</code>, <code>layer</code></td></tr>
+    <tr><td><code>workspace_id</code></td><td>Scope results to a single workspace</td></tr>
+    <tr><td><code>limit</code> / <code>offset</code></td><td>Pagination — default 20, max 100</td></tr>
+  </tbody>
+</table>
+
+<p><strong>Response:</strong></p>
+<pre><code>{
+  <span class="str">"total"</span>: <span class="num">42</span>,
+  <span class="str">"results"</span>: [
+    {
+      <span class="str">"resource_type"</span>: <span class="str">"layer"</span>,
+      <span class="str">"resource_id"</span>: <span class="str">"uuid"</span>,
+      <span class="str">"name"</span>: <span class="str">"Roads"</span>,
+      <span class="str">"description"</span>: <span class="str">"City road network"</span>,
+      <span class="str">"tags"</span>: [<span class="str">"infrastructure"</span>, <span class="str">"transport"</span>],
+      <span class="str">"workspace_id"</span>: <span class="str">"uuid"</span>,
+      <span class="str">"workspace_name"</span>: <span class="str">"City Planning"</span>,
+      <span class="str">"rank"</span>: <span class="num">0.85</span>
+    }
+  ]
+}</code></pre>
+
+<ul>
+  <li>Only returns resources the user has any permission on (or <code>is_public</code> for maps/layers)</li>
+  <li>Superadmin/superviewer see everything</li>
+  <li><code>q</code> and <code>tags</code> are combined with AND logic — both must match</li>
+  <li>When <code>q</code> is set, results are ranked by <code>ts_rank</code>. Otherwise ordered by <code>updated_at DESC</code></li>
+</ul>
+
+<p><strong>New file:</strong> <code>api/app/routers/search.py</code></p>
+</section>
+
+<!-- ============================================================ -->
+<!-- 10. AUDIT LOGS -->
+<!-- ============================================================ -->
+<section id="audit">
+<h2>10. Audit Logs</h2>
+
+<div class="callout callout-warn">
+  <strong>What exists but isn't wired:</strong>
+  <ul style="margin-top:8px">
+    <li><code>audit_log</code> table — fully designed with correct columns and indexes</li>
+    <li><code>audit_service.log()</code> in <code>api/app/services/audit_service.py</code> — implemented, fire-and-forget, <strong>never called anywhere</strong></li>
+    <li><code>AuditLogPage.tsx</code> frontend — calls <code>GET /audit</code> which <strong>does not exist</strong></li>
+  </ul>
+</div>
+
+<h3 id="audit-wire">Wire <code>audit_service.log()</code> into Routers</h3>
+<table>
+  <thead><tr><th>Router</th><th>Actions to log</th></tr></thead>
+  <tbody>
+    <tr><td><code>workspaces.py</code></td><td>create, update, delete</td></tr>
+    <tr><td><code>folders.py</code></td><td>create, update, delete, move</td></tr>
+    <tr><td><code>maps.py</code></td><td>create, update, delete</td></tr>
+    <tr><td><code>layers.py</code></td><td>create, update, delete, lock, unlock</td></tr>
+    <tr><td><code>permissions.py</code></td><td>grant, revoke</td></tr>
+    <tr><td><code>users.py</code></td><td>activate, deactivate, make_superadmin, make_superviewer</td></tr>
+  </tbody>
+</table>
+
+<p>Log <code>old_value</code> / <code>new_value</code> as snapshots of changed fields only (not full object):</p>
+<pre><code><span class="cm"># Example: update layer name</span>
+<span class="kw">await</span> audit_service.log(db, ctx,
+    action=<span class="str">"layer.update"</span>,
+    resource_type=<span class="str">"layer"</span>,
+    resource_id=str(layer.id),
+    old_value={<span class="str">"name"</span>: old_name},
+    new_value={<span class="str">"name"</span>: new_name},
+)
+
+<span class="cm"># Example: grant permission</span>
+<span class="kw">await</span> audit_service.log(db, ctx,
+    action=<span class="str">"permission.grant"</span>,
+    resource_type=<span class="str">"layer"</span>,
+    resource_id=str(layer_id),
+    new_value={<span class="str">"principal"</span>: f<span class="str">"user:{user_id}"</span>, <span class="str">"role_level"</span>: <span class="num">2</span>},
+)</code></pre>
+
+<h3 id="audit-endpoint">New Endpoint: <code>GET /audit</code></h3>
+<p><strong>New file:</strong> <code>api/app/routers/audit.py</code></p>
+
+<pre><code>GET /audit?resource_type=layer&resource_id=X&action=permission.grant
+          &user_id=Y&from=2026-01-01&to=2026-04-24&limit=50&offset=0</code></pre>
+
+<table>
+  <thead><tr><th>Role</th><th>What they see</th></tr></thead>
+  <tbody>
+    <tr><td><span class="badge badge-super">superadmin</span></td><td>All audit entries system-wide</td></tr>
+    <tr><td><span class="badge badge-admin">admin</span> on resource</td><td>Entries for that specific resource only</td></tr>
+    <tr><td>Others</td><td>403</td></tr>
+  </tbody>
+</table>
+
+<p><strong>Response:</strong></p>
+<pre><code>{
+  <span class="str">"total"</span>: <span class="num">234</span>,
+  <span class="str">"entries"</span>: [
+    {
+      <span class="str">"id"</span>: <span class="num">1001</span>,
+      <span class="str">"user_email"</span>: <span class="str">"jane@org.com"</span>,
+      <span class="str">"action"</span>: <span class="str">"permission.grant"</span>,
+      <span class="str">"resource_type"</span>: <span class="str">"layer"</span>,
+      <span class="str">"resource_id"</span>: <span class="str">"uuid"</span>,
+      <span class="str">"old_value"</span>: <span class="kw">null</span>,
+      <span class="str">"new_value"</span>: { <span class="str">"principal"</span>: <span class="str">"group:ops-team"</span>, <span class="str">"role_level"</span>: <span class="num">2</span> },
+      <span class="str">"ip_address"</span>: <span class="str">"10.0.0.1"</span>,
+      <span class="str">"created_at"</span>: <span class="str">"2026-04-24T09:00:00Z"</span>
+    }
+  ]
+}</code></pre>
+</section>
+
+<!-- ============================================================ -->
+<!-- 11. PERMISSION AUDIT REPORT -->
+<!-- ============================================================ -->
+<section id="perm-audit">
+<h2>11. Permission Audit Report</h2>
+
+<p>A <strong>"Who has access?"</strong> view for any resource. Shows all direct grants with group member counts. Accessible to manager+ on the resource.</p>
+
+<pre><code>GET /permissions/audit?resource_type=layer&resource_id=uuid</code></pre>
+
+<table>
+  <thead><tr><th>Auth</th><th>Rule</th></tr></thead>
+  <tbody>
+    <tr><td><span class="badge badge-manager">manager+</span> on resource</td><td>Sees all direct grants on that resource</td></tr>
+    <tr><td><span class="badge badge-super">superadmin</span></td><td>Sees everything</td></tr>
+  </tbody>
+</table>
+
+<p><strong>Response:</strong></p>
+<pre><code>{
+  <span class="str">"resource_type"</span>: <span class="str">"layer"</span>,
+  <span class="str">"resource_id"</span>: <span class="str">"uuid"</span>,
+  <span class="str">"resource_name"</span>: <span class="str">"Roads"</span>,
+  <span class="str">"is_public"</span>: <span class="kw">false</span>,
+  <span class="str">"direct_grants"</span>: [
+    {
+      <span class="str">"type"</span>: <span class="str">"user"</span>,
+      <span class="str">"user_id"</span>: <span class="str">"uuid"</span>,
+      <span class="str">"display_name"</span>: <span class="str">"John Doe"</span>,
+      <span class="str">"email"</span>: <span class="str">"john@org.com"</span>,
+      <span class="str">"role_level"</span>: <span class="num">2</span>,
+      <span class="str">"granted_by"</span>: <span class="str">"Jane Admin"</span>,
+      <span class="str">"granted_at"</span>: <span class="str">"2026-04-20T..."</span>
+    },
+    {
+      <span class="str">"type"</span>: <span class="str">"group"</span>,
+      <span class="str">"group_id"</span>: <span class="str">"uuid"</span>,
+      <span class="str">"group_name"</span>: <span class="str">"Field Team"</span>,
+      <span class="str">"role_level"</span>: <span class="num">1</span>,
+      <span class="str">"member_count"</span>: <span class="num">12</span>,
+      <span class="str">"granted_at"</span>: <span class="str">"2026-04-18T..."</span>
+    }
+  ]
+}</code></pre>
+
+<div class="callout callout-ok">
+  <strong>Frontend:</strong> A "Who has access?" panel/modal on each layer, map, folder, and workspace detail page. Visible only to manager+ on the resource. Shows a table of users and groups with their role and when it was granted.
+</div>
+</section>
+
+<!-- ============================================================ -->
+<!-- 12. USAGE STATISTICS -->
+<!-- ============================================================ -->
+<section id="stats">
+<h2>12. Layer &amp; Map Usage Statistics</h2>
+
+<p>Admin-only view of how a layer or map is being used. Built on the existing <code>layer_events</code> table (never written to currently) plus a new <code>map_events</code> table.</p>
+
+<h3 id="stats-db">DB Changes <span style="color:var(--text-muted);font-weight:400;font-size:14px">(migration 008_search_and_stats.py)</span></h3>
+
+<pre><code><span class="cm">-- Map-level events table (layer_events already exists)</span>
+<span class="kw">CREATE TABLE</span> map_events (
+    id         <span class="ty">BIGSERIAL</span> <span class="kw">PRIMARY KEY</span>,
+    map_id     <span class="ty">UUID</span> <span class="kw">REFERENCES</span> maps(id) <span class="kw">ON DELETE CASCADE</span>,
+    user_id    <span class="ty">UUID</span> <span class="kw">REFERENCES</span> users(id),
+    event_type <span class="ty">TEXT</span> <span class="kw">NOT NULL</span>,   <span class="cm">-- 'view'</span>
+    created_at <span class="ty">TIMESTAMPTZ</span> <span class="kw">NOT NULL DEFAULT</span> <span class="fn">now</span>()
+);
+<span class="kw">CREATE INDEX</span> map_events_map_id_idx     <span class="kw">ON</span> map_events(map_id);
+<span class="kw">CREATE INDEX</span> map_events_created_at_idx <span class="kw">ON</span> map_events(created_at <span class="kw">DESC</span>);</code></pre>
+
+<h4>Event Types to Record</h4>
+<table>
+  <thead><tr><th>Table</th><th>Event Type</th><th>Triggered By</th></tr></thead>
+  <tbody>
+    <tr><td><code>layer_events</code></td><td><code>feature_read</code></td><td><code>GET /features?layer_id=X</code></td></tr>
+    <tr><td><code>layer_events</code></td><td><code>feature_write</code></td><td><code>POST/PUT/DELETE /features</code></td></tr>
+    <tr><td><code>layer_events</code></td><td><code>export</code></td><td><code>GET /layers/{id}/export</code></td></tr>
+    <tr><td><code>layer_events</code></td><td><code>style_change</code></td><td><code>PUT /layers/{id}/style</code></td></tr>
+    <tr><td><code>map_events</code></td><td><code>view</code></td><td><code>GET /maps/{id}/open</code></td></tr>
+  </tbody>
+</table>
+
+<div class="callout">
+  All event writes are <strong>fire-and-forget</strong> (same <code>asyncio.create_task()</code> pattern as audit_service). They never slow down the main request.
+</div>
+
+<h3 id="stats-endpoints">Stats Endpoints</h3>
+
+<pre><code>GET /layers/{id}/stats?from=2026-01-01&to=2026-04-24
+GET /maps/{id}/stats?from=2026-01-01&to=2026-04-24</code></pre>
+
+<table>
+  <thead><tr><th>Auth</th><th>Rule</th></tr></thead>
+  <tbody>
+    <tr><td><span class="badge badge-admin">admin</span> on resource</td><td>Can view stats for that resource</td></tr>
+    <tr><td><span class="badge badge-super">superadmin</span></td><td>Can view stats for everything</td></tr>
+    <tr><td>Others</td><td>403</td></tr>
+  </tbody>
+</table>
+
+<p><strong>Layer stats response:</strong></p>
+<pre><code>{
+  <span class="str">"layer_id"</span>: <span class="str">"uuid"</span>, <span class="str">"layer_name"</span>: <span class="str">"Roads"</span>,
+  <span class="str">"period"</span>: { <span class="str">"from"</span>: <span class="str">"2026-01-01"</span>, <span class="str">"to"</span>: <span class="str">"2026-04-24"</span> },
+  <span class="str">"totals"</span>: {
+    <span class="str">"feature_reads"</span>: <span class="num">891</span>, <span class="str">"feature_writes"</span>: <span class="num">34</span>,
+    <span class="str">"exports"</span>: <span class="num">7</span>, <span class="str">"style_changes"</span>: <span class="num">2</span>
+  },
+  <span class="str">"unique_users"</span>: <span class="num">18</span>,
+  <span class="str">"last_accessed"</span>: <span class="str">"2026-04-23T14:30:00Z"</span>,
+  <span class="str">"top_users"</span>: [
+    { <span class="str">"display_name"</span>: <span class="str">"Jane"</span>, <span class="str">"email"</span>: <span class="str">"jane@org.com"</span>, <span class="str">"event_count"</span>: <span class="num">45</span> }
+  ],
+  <span class="str">"daily"</span>: [
+    { <span class="str">"date"</span>: <span class="str">"2026-04-23"</span>, <span class="str">"feature_reads"</span>: <span class="num">12</span>, <span class="str">"feature_writes"</span>: <span class="num">3</span>, <span class="str">"exports"</span>: <span class="num">1</span> }
+  ]
+}</code></pre>
+
+<p><strong>Map stats response:</strong></p>
+<pre><code>{
+  <span class="str">"map_id"</span>: <span class="str">"uuid"</span>, <span class="str">"map_name"</span>: <span class="str">"City Infrastructure"</span>,
+  <span class="str">"period"</span>: { <span class="str">"from"</span>: <span class="str">"2026-01-01"</span>, <span class="str">"to"</span>: <span class="str">"2026-04-24"</span> },
+  <span class="str">"totals"</span>: { <span class="str">"views"</span>: <span class="num">142</span> },
+  <span class="str">"unique_viewers"</span>: <span class="num">31</span>,
+  <span class="str">"last_viewed"</span>: <span class="str">"2026-04-24T09:15:00Z"</span>,
+  <span class="str">"top_viewers"</span>: [
+    { <span class="str">"display_name"</span>: <span class="str">"Bob"</span>, <span class="str">"view_count"</span>: <span class="num">22</span> }
+  ],
+  <span class="str">"daily"</span>: [
+    { <span class="str">"date"</span>: <span class="str">"2026-04-23"</span>, <span class="str">"views"</span>: <span class="num">12</span> }
+  ]
+}</code></pre>
 </section>
 
 </main>
