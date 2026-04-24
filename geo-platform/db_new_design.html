@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>Database Redesign: Workspace + Permission System</title>
+<title>Geo Platform — Full System Design</title>
 <style>
   :root {
     --bg: #0d1117;
@@ -37,11 +37,9 @@
     padding: 0;
   }
 
-  /* --- NAV --- */
   nav {
     position: fixed;
-    top: 0;
-    left: 0;
+    top: 0; left: 0;
     width: 280px;
     height: 100vh;
     background: var(--surface);
@@ -51,7 +49,7 @@
     z-index: 100;
   }
   nav h2 {
-    font-size: 14px;
+    font-size: 13px;
     color: var(--text-muted);
     text-transform: uppercase;
     letter-spacing: 0.5px;
@@ -63,77 +61,66 @@
     display: block;
     color: var(--text-muted);
     text-decoration: none;
-    padding: 6px 12px;
+    padding: 5px 12px;
     border-radius: 6px;
-    font-size: 14px;
+    font-size: 13px;
     transition: all 0.15s;
   }
   nav a:hover { color: var(--text); background: rgba(88,166,255,0.1); }
-  nav a.sub { padding-left: 28px; font-size: 13px; }
-  nav a.sub2 { padding-left: 44px; font-size: 12px; }
+  nav a.sub  { padding-left: 26px; font-size: 12px; }
+  nav a.sub2 { padding-left: 42px; font-size: 11px; color: #6e7681; }
+  nav .section-label {
+    font-size: 11px;
+    color: var(--accent-dim);
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+    padding: 14px 12px 4px;
+    font-weight: 600;
+  }
 
-  /* --- MAIN --- */
   main {
     margin-left: 280px;
-    max-width: 960px;
-    padding: 48px 48px 120px;
+    max-width: 980px;
+    padding: 48px 52px 120px;
   }
 
-  h1 {
-    font-size: 32px;
-    font-weight: 700;
-    margin-bottom: 8px;
-    color: var(--text);
-  }
-  .subtitle {
-    color: var(--text-muted);
-    font-size: 16px;
-    margin-bottom: 40px;
-  }
+  h1 { font-size: 30px; font-weight: 700; margin-bottom: 6px; }
+  .subtitle { color: var(--text-muted); font-size: 15px; margin-bottom: 40px; }
 
   h2 {
-    font-size: 24px;
-    font-weight: 600;
-    margin-top: 56px;
-    margin-bottom: 16px;
+    font-size: 22px; font-weight: 600;
+    margin-top: 60px; margin-bottom: 16px;
     padding-bottom: 8px;
     border-bottom: 1px solid var(--border);
-    color: var(--text);
   }
   h3 {
-    font-size: 18px;
-    font-weight: 600;
-    margin-top: 32px;
-    margin-bottom: 12px;
+    font-size: 17px; font-weight: 600;
+    margin-top: 32px; margin-bottom: 10px;
     color: var(--accent);
   }
   h4 {
-    font-size: 15px;
-    font-weight: 600;
-    margin-top: 24px;
-    margin-bottom: 8px;
+    font-size: 13px; font-weight: 600;
+    margin-top: 22px; margin-bottom: 6px;
     color: var(--text-muted);
-    text-transform: uppercase;
-    letter-spacing: 0.3px;
+    text-transform: uppercase; letter-spacing: 0.3px;
   }
 
-  p, li { font-size: 15px; color: var(--text); }
-  p { margin-bottom: 12px; }
-  ul, ol { margin-bottom: 16px; padding-left: 24px; }
-  li { margin-bottom: 4px; }
-
+  p { font-size: 14px; margin-bottom: 10px; }
+  ul, ol { margin-bottom: 14px; padding-left: 22px; }
+  li { font-size: 14px; margin-bottom: 3px; }
   strong { color: var(--text); }
+  em { color: var(--text-muted); }
+
   code {
     background: var(--surface);
     border: 1px solid var(--border);
-    padding: 2px 6px;
+    padding: 1px 5px;
     border-radius: 4px;
-    font-size: 13px;
+    font-size: 12px;
     font-family: 'SF Mono', 'Fira Code', 'Consolas', monospace;
     color: var(--accent);
   }
 
-  /* --- CODE BLOCKS --- */
   pre {
     background: var(--code-bg);
     border: 1px solid var(--border);
@@ -141,140 +128,152 @@
     padding: 16px 20px;
     overflow-x: auto;
     margin-bottom: 20px;
-    font-size: 13px;
-    line-height: 1.5;
+    font-size: 12.5px;
+    line-height: 1.55;
   }
-  pre code {
-    background: none;
-    border: none;
-    padding: 0;
-    color: var(--text);
-  }
-  /* SQL highlighting */
-  .kw { color: var(--keyword); font-weight: 600; }
-  .ty { color: var(--type); }
+  pre code { background: none; border: none; padding: 0; color: var(--text); font-size: 12.5px; }
+  .kw  { color: var(--keyword); font-weight: 600; }
+  .ty  { color: var(--type); }
   .str { color: var(--string); }
-  .cm { color: var(--comment); font-style: italic; }
-  .fn { color: var(--func); }
+  .cm  { color: var(--comment); font-style: italic; }
+  .fn  { color: var(--func); }
   .num { color: var(--number); }
 
-  /* --- TABLES --- */
   table {
     width: 100%;
     border-collapse: collapse;
     margin-bottom: 20px;
-    font-size: 14px;
+    font-size: 13px;
   }
   th {
     background: var(--surface);
     color: var(--text-muted);
     font-weight: 600;
     text-align: left;
-    padding: 10px 14px;
+    padding: 9px 13px;
     border: 1px solid var(--border);
-    font-size: 12px;
+    font-size: 11px;
     text-transform: uppercase;
     letter-spacing: 0.3px;
   }
-  td {
-    padding: 10px 14px;
-    border: 1px solid var(--border);
-    vertical-align: top;
-  }
+  td { padding: 9px 13px; border: 1px solid var(--border); vertical-align: top; }
   tr:hover td { background: rgba(88,166,255,0.04); }
-  td code { font-size: 12px; }
+  td code { font-size: 11px; }
+  td.mono { font-family: 'SF Mono','Fira Code','Consolas',monospace; font-size: 12px; color: var(--type); }
 
-  /* --- CARDS --- */
   .card {
     background: var(--surface);
     border: 1px solid var(--border);
     border-radius: 8px;
-    padding: 20px 24px;
-    margin-bottom: 16px;
+    padding: 18px 22px;
+    margin-bottom: 14px;
   }
   .card h4 { margin-top: 0; }
 
-  /* --- HIERARCHY TREE --- */
   .tree {
     background: var(--surface);
     border: 1px solid var(--border);
     border-radius: 8px;
-    padding: 24px 32px;
-    margin-bottom: 20px;
-    font-family: 'SF Mono', 'Fira Code', 'Consolas', monospace;
-    font-size: 14px;
-    line-height: 1.8;
-    color: var(--text);
+    padding: 20px 28px;
+    margin-bottom: 18px;
+    font-family: 'SF Mono','Fira Code','Consolas',monospace;
+    font-size: 13px;
+    line-height: 1.9;
+    white-space: pre;
   }
-  .tree .node { color: var(--accent); font-weight: 600; }
-  .tree .note { color: var(--text-muted); font-weight: 400; font-style: italic; }
+  .tree .node  { color: var(--accent); font-weight: 600; }
+  .tree .layer { color: var(--green); }
+  .tree .map   { color: var(--purple); }
+  .tree .group { color: var(--orange); }
+  .tree .emb   { color: var(--cyan); }
+  .tree .perm  { color: var(--red); }
+  .tree .note  { color: var(--text-muted); font-style: italic; }
 
-  /* --- ROLE BADGES --- */
   .badge {
     display: inline-block;
-    padding: 2px 10px;
+    padding: 2px 9px;
     border-radius: 12px;
-    font-size: 12px;
+    font-size: 11px;
     font-weight: 600;
     letter-spacing: 0.3px;
   }
-  .badge-viewer  { background: rgba(57,210,192,0.15); color: var(--cyan); }
-  .badge-editor  { background: rgba(63,185,80,0.15);  color: var(--green); }
-  .badge-manager { background: rgba(210,169,34,0.15); color: var(--orange); }
-  .badge-admin   { background: rgba(248,81,73,0.15);  color: var(--red); }
-  .badge-super   { background: rgba(188,140,255,0.15);color: var(--purple); }
+  .badge-viewer  { background: rgba(57,210,192,0.15);  color: var(--cyan); }
+  .badge-editor  { background: rgba(63,185,80,0.15);   color: var(--green); }
+  .badge-manager { background: rgba(210,169,34,0.15);  color: var(--orange); }
+  .badge-admin   { background: rgba(248,81,73,0.15);   color: var(--red); }
+  .badge-super   { background: rgba(188,140,255,0.15); color: var(--purple); }
+  .badge-get     { background: rgba(57,210,192,0.12);  color: var(--cyan); }
+  .badge-post    { background: rgba(63,185,80,0.12);   color: var(--green); }
+  .badge-put     { background: rgba(210,169,34,0.12);  color: var(--orange); }
+  .badge-delete  { background: rgba(248,81,73,0.12);   color: var(--red); }
+  .badge-patch   { background: rgba(188,140,255,0.12); color: var(--purple); }
 
-  /* --- FLOW DIAGRAM --- */
   .flow {
     display: flex;
     align-items: center;
-    gap: 12px;
-    margin: 16px 0 20px;
+    gap: 10px;
+    margin: 14px 0 18px;
     flex-wrap: wrap;
   }
   .flow-step {
     background: var(--surface);
     border: 1px solid var(--border);
     border-radius: 8px;
-    padding: 10px 16px;
+    padding: 9px 14px;
     font-size: 13px;
     white-space: nowrap;
   }
-  .flow-arrow { color: var(--text-muted); font-size: 18px; }
+  .flow-arrow { color: var(--text-muted); font-size: 16px; }
 
-  /* --- CALLOUTS --- */
   .callout {
     border-left: 3px solid var(--accent);
     background: rgba(88,166,255,0.06);
-    padding: 12px 16px;
-    margin-bottom: 16px;
+    padding: 11px 15px;
+    margin-bottom: 14px;
     border-radius: 0 6px 6px 0;
-    font-size: 14px;
+    font-size: 13px;
   }
-  .callout-warn {
-    border-left-color: var(--orange);
-    background: rgba(210,169,34,0.06);
-  }
-  .callout-ok {
-    border-left-color: var(--green);
-    background: rgba(63,185,80,0.06);
-  }
+  .callout-warn  { border-left-color: var(--orange); background: rgba(210,169,34,0.06); }
+  .callout-ok    { border-left-color: var(--green);  background: rgba(63,185,80,0.06); }
+  .callout-error { border-left-color: var(--red);    background: rgba(248,81,73,0.06); }
 
-  /* --- CHECKLIST --- */
-  .check { list-style: none; padding-left: 0; }
-  .check li { padding: 6px 0; padding-left: 28px; position: relative; }
-  .check li::before {
-    content: '';
-    position: absolute;
-    left: 0;
-    top: 10px;
-    width: 16px;
-    height: 16px;
-    border: 2px solid var(--border);
-    border-radius: 4px;
+  .endpoint-row {
+    display: flex;
+    align-items: baseline;
+    gap: 10px;
+    padding: 8px 0;
+    border-bottom: 1px solid var(--border);
   }
+  .endpoint-row:last-child { border-bottom: none; }
+  .endpoint-method { min-width: 60px; }
+  .endpoint-path { font-family: 'SF Mono','Fira Code','Consolas',monospace; font-size: 12px; color: var(--type); flex: 1; }
+  .endpoint-desc { font-size: 12px; color: var(--text-muted); min-width: 220px; }
 
-  /* responsive */
+  .step-num {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 26px; height: 26px;
+    background: var(--accent-dim);
+    color: white;
+    border-radius: 50%;
+    font-size: 12px;
+    font-weight: 700;
+    margin-right: 10px;
+    flex-shrink: 0;
+  }
+  .step-row {
+    display: flex;
+    align-items: flex-start;
+    gap: 0;
+    padding: 12px 0;
+    border-bottom: 1px solid var(--border);
+  }
+  .step-row:last-child { border-bottom: none; }
+  .step-content { flex: 1; }
+  .step-content strong { color: var(--accent); }
+  .step-content p { margin-bottom: 4px; font-size: 13px; }
+
   @media (max-width: 900px) {
     nav { display: none; }
     main { margin-left: 0; padding: 24px; }
@@ -284,1000 +283,863 @@
 <body>
 
 <nav>
-  <h2>DB Redesign Plan</h2>
-  <a href="#context">Context</a>
-  <a href="#hierarchy">1. New Hierarchy</a>
-  <a href="#schema">2. Database Schema</a>
-  <a href="#schema-workspaces" class="sub">Workspaces</a>
-  <a href="#schema-folders" class="sub">Folders</a>
-  <a href="#schema-maps" class="sub">Maps</a>
-  <a href="#schema-layers" class="sub">Layers</a>
-  <a href="#schema-map-layers" class="sub">Map-Layer Join</a>
-  <a href="#schema-users" class="sub">Users</a>
-  <a href="#schema-permissions" class="sub">Resource Permissions</a>
-  <a href="#schema-versions" class="sub">Version History</a>
-  <a href="#schema-drop" class="sub">Drop Old Objects</a>
-  <a href="#roles">3. Role System</a>
-  <a href="#role-levels" class="sub">Role Levels</a>
-  <a href="#role-grant-rules" class="sub">Grant Rules</a>
-  <a href="#role-extensibility" class="sub">Extensibility</a>
-  <a href="#resolution">4. Permission Resolution</a>
-  <a href="#resolution-no-cascade" class="sub">No Cascade</a>
-  <a href="#resolution-groups" class="sub">Group Expansion</a>
-  <a href="#resolution-effective" class="sub">Effective Role Check</a>
-  <a href="#resolution-python" class="sub">Python API</a>
-  <a href="#resolution-map-open" class="sub">Map Open Query</a>
-  <a href="#api">5. API Endpoints</a>
-  <a href="#api-workspaces" class="sub">Workspaces</a>
-  <a href="#api-folders" class="sub">Folders</a>
-  <a href="#api-maps" class="sub">Maps</a>
-  <a href="#api-layers" class="sub">Layers</a>
-  <a href="#api-permissions" class="sub">Permissions</a>
-  <a href="#api-users" class="sub">Users</a>
-  <a href="#migration">6. Migration Strategy</a>
-  <a href="#files">7. Files to Modify</a>
-  <a href="#verification">8. Verification</a>
-  <a href="#search">9. Search Engine</a>
-  <a href="#search-db" class="sub">DB Changes</a>
-  <a href="#search-api" class="sub">API Endpoint</a>
-  <a href="#audit">10. Audit Logs</a>
-  <a href="#audit-wire" class="sub">Wiring log()</a>
-  <a href="#audit-endpoint" class="sub">GET /audit</a>
-  <a href="#perm-audit">11. Permission Audit</a>
-  <a href="#stats">12. Usage Statistics</a>
-  <a href="#stats-db" class="sub">DB Changes</a>
-  <a href="#stats-endpoints" class="sub">Stats Endpoints</a>
+  <h2>Geo Platform Design</h2>
+  <div class="section-label">Structure Examples</div>
+  <a href="#ex-workspace">Workspace tree</a>
+  <a href="#ex-permissions">Permissions example</a>
+  <a href="#ex-embedded">Embedded maps</a>
+  <div class="section-label">Database Schema</div>
+  <a href="#db-workspaces">workspaces</a>
+  <a href="#db-folders">folders</a>
+  <a href="#db-maps">maps</a>
+  <a href="#db-map-groups">map_groups</a>
+  <a href="#db-map-layers">map_layers</a>
+  <a href="#db-layers">layers</a>
+  <a href="#db-users">users / groups</a>
+  <a href="#db-permissions">resource_permissions</a>
+  <a href="#db-versions">resource_versions</a>
+  <a href="#db-expressions">saved_expressions</a>
+  <a href="#db-features">features (shard)</a>
+  <div class="section-label">Permission System</div>
+  <a href="#perm-roles">Role levels</a>
+  <a href="#perm-resolution">Resolution logic</a>
+  <a href="#perm-embedded">Embedded maps</a>
+  <div class="section-label">Change Tracking</div>
+  <a href="#change-columns">New columns</a>
+  <a href="#change-flow">Mutation flow</a>
+  <a href="#change-freshness">Freshness endpoint</a>
+  <div class="section-label">Expression DSL</div>
+  <a href="#dsl-structure">DSL structure</a>
+  <a href="#dsl-ops">Supported ops</a>
+  <a href="#dsl-security">Security model</a>
+  <div class="section-label">API Endpoints</div>
+  <a href="#api-auth">Auth</a>
+  <a href="#api-workspaces">Workspaces &amp; Folders</a>
+  <a href="#api-maps">Maps</a>
+  <a href="#api-map-groups">Map Groups</a>
+  <a href="#api-features">Features</a>
+  <a href="#api-layers">Layers</a>
+  <a href="#api-export">Export</a>
+  <a href="#api-stats">Stats</a>
+  <a href="#api-versions">Versions</a>
+  <a href="#api-expressions">Expressions</a>
+  <a href="#api-permissions">Permissions</a>
+  <a href="#api-users">Users &amp; Groups</a>
+  <div class="section-label">Caching</div>
+  <a href="#cache-registry">Cache registry</a>
+  <div class="section-label">Implementation Plan</div>
+  <a href="#impl-migrations">Migrations</a>
+  <a href="#impl-backend">Backend files</a>
+  <a href="#impl-frontend">Frontend files</a>
+  <a href="#impl-order">Step-by-step order</a>
+  <a href="#impl-verify">Verification tests</a>
 </nav>
 
 <main>
 
-<!-- ============================================================ -->
-<!-- CONTEXT -->
-<!-- ============================================================ -->
-<h1>Database Redesign</h1>
-<p class="subtitle">Workspace + Permission System &mdash; Geo Platform</p>
+<h1>Geo Platform — Full System Design</h1>
+<p class="subtitle">Complete design document covering structure, DB schema, API, and implementation plan. Updated April 2026.</p>
 
-<section id="context">
-<h2>Context</h2>
-<p>The current geo-platform uses <code>GeoDatabase &gt; GroupLayer (folders) &gt; Layer</code> with a complex permission system (allow/deny ACL, bitmask roles, hierarchy walk at query time). This redesign introduces:</p>
-<ul>
-  <li><strong>Workspaces</strong> (replaces databases) with nestable <strong>folders</strong> and <strong>maps</strong></li>
-  <li><strong>Maps</strong> as first-class containers for layers (layers can be shared across maps)</li>
-  <li>Simplified permission model: <strong>no deny rules</strong>, flat grants, highest-role-wins</li>
-  <li>New role ladder: <span class="badge badge-viewer">viewer</span> &lt; <span class="badge badge-editor">editor</span> &lt; <span class="badge badge-manager">manager</span> &lt; <span class="badge badge-admin">admin</span> &plus; system-level <span class="badge badge-super">superviewer</span> / <span class="badge badge-super">superadmin</span></li>
-  <li><code>is_public</code> flag on maps and layers (visible to any authenticated user)</li>
-  <li>Creator auto-gets admin; no ownership concept</li>
-  <li>Version history for maps and layers</li>
-</ul>
-</section>
+<!-- ======================================================= SECTION 1: STRUCTURE EXAMPLES -->
+<h2 id="examples">Section 1 — Structure Examples</h2>
 
-<!-- ============================================================ -->
-<!-- 1. HIERARCHY -->
-<!-- ============================================================ -->
-<section id="hierarchy">
-<h2>1. New Hierarchy</h2>
+<p>Before reading the schema, here are concrete examples of how the data fits together. These show a real workspace and every table row that would exist for each node in the tree.</p>
 
-<div class="tree">
-<span class="node">Workspace</span><br>
-&nbsp;&#9500;&#9472;&#9472; <span class="node">Folder</span> <span class="note">(nestable, unlimited depth)</span><br>
-&nbsp;&#9474;&nbsp;&nbsp;&nbsp;&#9500;&#9472;&#9472; <span class="node">Folder</span><br>
-&nbsp;&#9474;&nbsp;&nbsp;&nbsp;&#9474;&nbsp;&nbsp;&nbsp;&#9492;&#9472;&#9472; <span class="node">Map</span><br>
-&nbsp;&#9474;&nbsp;&nbsp;&nbsp;&#9492;&#9472;&#9472; <span class="node">Map</span><br>
-&nbsp;&#9492;&#9472;&#9472; <span class="node">Map</span> <span class="note">(can live at workspace root)</span><br>
-&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&#9500;&#9472;&#9472; <span class="node">Layer</span> <span class="note">(via join table)</span><br>
-&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&#9492;&#9472;&#9472; <span class="node">Layer</span>
-</div>
+<h3 id="ex-workspace">1.1 Workspace Tree</h3>
+<p>A workspace is the top-level org container. Inside it: folders (for organizing maps), maps (the main working unit), and inside each map: groups and layers. The tree below shows a complete example.</p>
 
-<ul>
-  <li>A <strong>Layer</strong> belongs to one workspace but can appear in <strong>multiple maps</strong> via the <code>map_layers</code> join table</li>
-  <li>Folders are organizational only &mdash; no permissions cascade automatically</li>
-  <li>When granting permissions on a folder/map, the UI asks which children to include and issues a bulk grant (individual rows per resource)</li>
-</ul>
+<div class="tree"><span class="node">Workspace</span>: "Israel Survey Org"
+│
+├── <span class="node">Folder</span>: "Field Operations"          <span class="note">← folders table row, workspace_id = above</span>
+│   ├── <span class="map">Map</span>: "Northern Survey 2025"      <span class="note">← maps table row, folder_id = above</span>
+│   │   ├── <span class="group">Group</span>: "Base Layers"           <span class="note">← map_groups row, map_id = above</span>
+│   │   │   ├── <span class="layer">Layer</span>: "Roads"              <span class="note">← map_layers row linking to layers table</span>
+│   │   │   └── <span class="layer">Layer</span>: "Topography"         <span class="note">← map_layers row</span>
+│   │   ├── <span class="group">Group</span>: "Survey Data"           <span class="note">← map_groups row</span>
+│   │   │   ├── <span class="layer">Layer</span>: "Survey Points"      <span class="note">← map_layers row</span>
+│   │   │   └── <span class="layer">Layer</span>: "Boundaries"         <span class="note">← map_layers row</span>
+│   │   └── <span class="layer">Layer</span>: "Satellite Imagery"      <span class="note">← map_layers row, group_id = NULL (top-level in map)</span>
+│   │
+│   └── <span class="map">Map</span>: "Southern Survey 2025"      <span class="note">← maps table row</span>
+│       └── <span class="emb">Embedded Map</span>: "Shared Base"  <span class="note">← map_groups row with embedded_map_id set</span>
+│           ├── <span class="layer">Layer</span>: "Roads"              <span class="note">← resolved at query time from the embedded map</span>
+│           └── <span class="layer">Layer</span>: "Topography"         <span class="note">← resolved at query time from the embedded map</span>
+│
+├── <span class="node">Folder</span>: "Analysis"                  <span class="note">← folders row</span>
+│   └── <span class="map">Map</span>: "Heat Analysis"             <span class="note">← maps row</span>
+│       └── <span class="layer">Layer</span>: "Population Density"  <span class="note">← map_layers row, no group</span>
+│
+└── <span class="map">Map</span>: "Shared Base"                  <span class="note">← maps row, folder_id = NULL (root-level)</span>
+    ├── <span class="layer">Layer</span>: "Roads"
+    └── <span class="layer">Layer</span>: "Topography"</div>
 
 <div class="callout">
-  <strong>Key design decision:</strong> Permissions are stored as flat rows per resource. There is no query-time hierarchy walk. When you grant on a folder, the UI creates individual permission rows for each selected child resource via <code>POST /permissions/bulk</code>.
+  <strong>Key distinction:</strong> <strong>Folders</strong> are workspace-level organizers for maps. <strong>Map Groups</strong> are inside a map and organize layers within that map. These are two separate tables with different purposes.
 </div>
-</section>
 
-<!-- ============================================================ -->
-<!-- 2. DATABASE SCHEMA -->
-<!-- ============================================================ -->
-<section id="schema">
-<h2>2. Database Schema</h2>
-<p>All changes in a single Alembic migration: <code>007_permission_redesign.py</code></p>
+<h3 id="ex-permissions">1.2 Where Permissions Are Stored</h3>
+<p>All permissions go into the <code>resource_permissions</code> table. There is one row per (user/group, resource) pair. There is no permission hierarchy — each row is explicit. Here is what the permission rows would look like for the example above:</p>
 
-<!-- 2.1 Workspaces -->
-<h3 id="schema-workspaces">2.1 Workspaces <span style="color:var(--text-muted);font-weight:400;font-size:14px">(rename geo_databases)</span></h3>
-<pre><code><span class="kw">ALTER TABLE</span> geo_databases <span class="kw">RENAME TO</span> workspaces;
-<span class="kw">ALTER TABLE</span> workspaces <span class="kw">ADD COLUMN</span> created_by <span class="ty">UUID</span> <span class="kw">REFERENCES</span> users(id);
-<span class="cm">-- keeps: id, name, description, default_srid, tags, created_at</span></code></pre>
-
-<!-- 2.2 Folders -->
-<h3 id="schema-folders">2.2 Folders <span style="color:var(--text-muted);font-weight:400;font-size:14px">(rename group_layers)</span></h3>
-<pre><code><span class="kw">ALTER TABLE</span> group_layers <span class="kw">RENAME TO</span> folders;
-<span class="kw">ALTER TABLE</span> folders <span class="kw">RENAME COLUMN</span> database_id <span class="kw">TO</span> workspace_id;
-<span class="kw">ALTER TABLE</span> folders <span class="kw">ADD COLUMN</span> created_by <span class="ty">UUID</span> <span class="kw">REFERENCES</span> users(id);
-<span class="cm">-- keeps: id, workspace_id, parent_id (self-ref), name, description,</span>
-<span class="cm">--        tags, sort_order, deleted_at/by, created_at</span></code></pre>
-
-<!-- 2.3 Maps -->
-<h3 id="schema-maps">2.3 Maps <span style="color:var(--green);font-weight:400;font-size:14px">(new table)</span></h3>
-<pre><code><span class="kw">CREATE TABLE</span> maps (
-    id              <span class="ty">UUID</span> <span class="kw">PRIMARY KEY DEFAULT</span> <span class="fn">gen_random_uuid</span>(),
-    workspace_id    <span class="ty">UUID</span> <span class="kw">NOT NULL REFERENCES</span> workspaces(id) <span class="kw">ON DELETE CASCADE</span>,
-    folder_id       <span class="ty">UUID</span> <span class="kw">REFERENCES</span> folders(id) <span class="kw">ON DELETE SET NULL</span>,
-    name            <span class="ty">TEXT</span> <span class="kw">NOT NULL</span>,
-    description     <span class="ty">TEXT</span>,
-    tags            <span class="ty">TEXT[]</span> <span class="kw">NOT NULL DEFAULT</span> <span class="str">'{}'</span>,
-    is_public       <span class="ty">BOOLEAN</span> <span class="kw">NOT NULL DEFAULT</span> <span class="num">FALSE</span>,
-    thumbnail_s3_key <span class="ty">TEXT</span>,
-    sort_order      <span class="ty">INT</span> <span class="kw">NOT NULL DEFAULT</span> <span class="num">0</span>,
-    created_by      <span class="ty">UUID</span> <span class="kw">REFERENCES</span> users(id),
-    deleted_at      <span class="ty">TIMESTAMPTZ</span>,
-    deleted_by      <span class="ty">UUID</span> <span class="kw">REFERENCES</span> users(id),
-    created_at      <span class="ty">TIMESTAMPTZ</span> <span class="kw">NOT NULL DEFAULT</span> <span class="fn">now</span>(),
-    updated_at      <span class="ty">TIMESTAMPTZ</span> <span class="kw">NOT NULL DEFAULT</span> <span class="fn">now</span>()
-);
-
-<span class="kw">CREATE INDEX</span> maps_workspace_id_idx <span class="kw">ON</span> maps(workspace_id);
-<span class="kw">CREATE INDEX</span> maps_folder_id_idx    <span class="kw">ON</span> maps(folder_id);
-<span class="kw">CREATE INDEX</span> maps_is_public_idx    <span class="kw">ON</span> maps(is_public) <span class="kw">WHERE</span> is_public = <span class="num">TRUE</span>;
-<span class="kw">CREATE INDEX</span> maps_tags_idx         <span class="kw">ON</span> maps <span class="kw">USING</span> GIN(tags);
-<span class="kw">CREATE INDEX</span> maps_deleted_at_idx   <span class="kw">ON</span> maps(deleted_at) <span class="kw">WHERE</span> deleted_at <span class="kw">IS NULL</span>;
-<span class="kw">CREATE INDEX</span> maps_created_by_idx   <span class="kw">ON</span> maps(created_by);</code></pre>
-
-<!-- 2.4 Layers -->
-<h3 id="schema-layers">2.4 Layers <span style="color:var(--orange);font-weight:400;font-size:14px">(modify existing)</span></h3>
-<pre><code><span class="kw">ALTER TABLE</span> layers <span class="kw">RENAME COLUMN</span> database_id <span class="kw">TO</span> workspace_id;
-<span class="kw">ALTER TABLE</span> layers <span class="kw">ADD COLUMN</span> is_public <span class="ty">BOOLEAN</span> <span class="kw">NOT NULL DEFAULT</span> <span class="num">FALSE</span>;
-<span class="kw">ALTER TABLE</span> layers <span class="kw">ADD COLUMN</span> created_by <span class="ty">UUID</span> <span class="kw">REFERENCES</span> users(id);
-<span class="kw">ALTER TABLE</span> layers <span class="kw">DROP COLUMN</span> group_layer_id;  <span class="cm">-- replaced by map_layers</span>
-
-<span class="kw">CREATE INDEX</span> layers_is_public_idx  <span class="kw">ON</span> layers(is_public) <span class="kw">WHERE</span> is_public = <span class="num">TRUE</span>;
-<span class="kw">CREATE INDEX</span> layers_created_by_idx <span class="kw">ON</span> layers(created_by);</code></pre>
-
-<!-- 2.5 Map-Layer Join -->
-<h3 id="schema-map-layers">2.5 Map-Layer Join Table <span style="color:var(--green);font-weight:400;font-size:14px">(new)</span></h3>
-<pre><code><span class="kw">CREATE TABLE</span> map_layers (
-    map_id      <span class="ty">UUID</span> <span class="kw">NOT NULL REFERENCES</span> maps(id) <span class="kw">ON DELETE CASCADE</span>,
-    layer_id    <span class="ty">UUID</span> <span class="kw">NOT NULL REFERENCES</span> layers(id) <span class="kw">ON DELETE CASCADE</span>,
-    sort_order  <span class="ty">INT</span> <span class="kw">NOT NULL DEFAULT</span> <span class="num">0</span>,
-    is_visible  <span class="ty">BOOLEAN</span> <span class="kw">NOT NULL DEFAULT</span> <span class="num">TRUE</span>,
-    opacity     <span class="ty">REAL</span> <span class="kw">NOT NULL DEFAULT</span> <span class="num">1.0</span>
-                <span class="kw">CHECK</span> (opacity >= <span class="num">0.0</span> <span class="kw">AND</span> opacity <= <span class="num">1.0</span>),
-    added_by    <span class="ty">UUID</span> <span class="kw">REFERENCES</span> users(id),
-    added_at    <span class="ty">TIMESTAMPTZ</span> <span class="kw">NOT NULL DEFAULT</span> <span class="fn">now</span>(),
-    <span class="kw">PRIMARY KEY</span> (map_id, layer_id)
-);
-
-<span class="kw">CREATE INDEX</span> map_layers_layer_id_idx    <span class="kw">ON</span> map_layers(layer_id);
-<span class="kw">CREATE INDEX</span> map_layers_map_id_sort_idx <span class="kw">ON</span> map_layers(map_id, sort_order);</code></pre>
-
-<!-- 2.6 Users -->
-<h3 id="schema-users">2.6 Users <span style="color:var(--orange);font-weight:400;font-size:14px">(add superviewer)</span></h3>
-<pre><code><span class="kw">ALTER TABLE</span> users <span class="kw">ADD COLUMN</span> is_superviewer <span class="ty">BOOLEAN</span> <span class="kw">NOT NULL DEFAULT</span> <span class="num">FALSE</span>;</code></pre>
-
-<!-- 2.7 Resource Permissions -->
-<h3 id="schema-permissions">2.7 Unified Resource Permissions <span style="color:var(--green);font-weight:400;font-size:14px">(replaces permissions + roles tables)</span></h3>
-<pre><code><span class="kw">CREATE TYPE</span> <span class="ty">resource_type</span> <span class="kw">AS ENUM</span> (<span class="str">'workspace'</span>, <span class="str">'folder'</span>, <span class="str">'map'</span>, <span class="str">'layer'</span>);
-
-<span class="kw">CREATE TABLE</span> resource_permissions (
-    id           <span class="ty">UUID</span> <span class="kw">PRIMARY KEY DEFAULT</span> <span class="fn">gen_random_uuid</span>(),
-
-    <span class="cm">-- Principal: exactly one must be set</span>
-    user_id      <span class="ty">UUID</span> <span class="kw">REFERENCES</span> users(id) <span class="kw">ON DELETE CASCADE</span>,
-    group_id     <span class="ty">UUID</span> <span class="kw">REFERENCES</span> ms_groups(id) <span class="kw">ON DELETE CASCADE</span>,
-
-    <span class="cm">-- Resource: exactly one must be set</span>
-    workspace_id <span class="ty">UUID</span> <span class="kw">REFERENCES</span> workspaces(id) <span class="kw">ON DELETE CASCADE</span>,
-    folder_id    <span class="ty">UUID</span> <span class="kw">REFERENCES</span> folders(id) <span class="kw">ON DELETE CASCADE</span>,
-    map_id       <span class="ty">UUID</span> <span class="kw">REFERENCES</span> maps(id) <span class="kw">ON DELETE CASCADE</span>,
-    layer_id     <span class="ty">UUID</span> <span class="kw">REFERENCES</span> layers(id) <span class="kw">ON DELETE CASCADE</span>,
-
-    <span class="cm">-- Role: 1=viewer, 2=editor, 3=manager, 4=admin</span>
-    role_level   <span class="ty">SMALLINT</span> <span class="kw">NOT NULL CHECK</span> (role_level <span class="kw">BETWEEN</span> <span class="num">1</span> <span class="kw">AND</span> <span class="num">4</span>),
-
-    granted_by   <span class="ty">UUID</span> <span class="kw">REFERENCES</span> users(id),
-    granted_at   <span class="ty">TIMESTAMPTZ</span> <span class="kw">NOT NULL DEFAULT</span> <span class="fn">now</span>(),
-
-    <span class="kw">CONSTRAINT</span> rp_one_principal <span class="kw">CHECK</span> (
-        (user_id <span class="kw">IS NOT NULL</span>)::<span class="ty">INT</span> +
-        (group_id <span class="kw">IS NOT NULL</span>)::<span class="ty">INT</span> = <span class="num">1</span>
-    ),
-    <span class="kw">CONSTRAINT</span> rp_one_resource <span class="kw">CHECK</span> (
-        (workspace_id <span class="kw">IS NOT NULL</span>)::<span class="ty">INT</span> +
-        (folder_id <span class="kw">IS NOT NULL</span>)::<span class="ty">INT</span> +
-        (map_id <span class="kw">IS NOT NULL</span>)::<span class="ty">INT</span> +
-        (layer_id <span class="kw">IS NOT NULL</span>)::<span class="ty">INT</span> = <span class="num">1</span>
-    ),
-    <span class="cm">-- One role per principal+resource pair (PG16 NULLS NOT DISTINCT)</span>
-    <span class="kw">CONSTRAINT</span> rp_unique_user_workspace
-        <span class="kw">UNIQUE NULLS NOT DISTINCT</span> (user_id, workspace_id),
-    <span class="kw">CONSTRAINT</span> rp_unique_user_folder
-        <span class="kw">UNIQUE NULLS NOT DISTINCT</span> (user_id, folder_id),
-    <span class="kw">CONSTRAINT</span> rp_unique_user_map
-        <span class="kw">UNIQUE NULLS NOT DISTINCT</span> (user_id, map_id),
-    <span class="kw">CONSTRAINT</span> rp_unique_user_layer
-        <span class="kw">UNIQUE NULLS NOT DISTINCT</span> (user_id, layer_id),
-    <span class="kw">CONSTRAINT</span> rp_unique_group_workspace
-        <span class="kw">UNIQUE NULLS NOT DISTINCT</span> (group_id, workspace_id),
-    <span class="kw">CONSTRAINT</span> rp_unique_group_folder
-        <span class="kw">UNIQUE NULLS NOT DISTINCT</span> (group_id, folder_id),
-    <span class="kw">CONSTRAINT</span> rp_unique_group_map
-        <span class="kw">UNIQUE NULLS NOT DISTINCT</span> (group_id, map_id),
-    <span class="kw">CONSTRAINT</span> rp_unique_group_layer
-        <span class="kw">UNIQUE NULLS NOT DISTINCT</span> (group_id, layer_id)
-);</code></pre>
-
-<h4>Indexes</h4>
-<pre><code><span class="cm">-- Lookup by principal</span>
-<span class="kw">CREATE INDEX</span> rp_user_id_idx  <span class="kw">ON</span> resource_permissions(user_id)  <span class="kw">WHERE</span> user_id <span class="kw">IS NOT NULL</span>;
-<span class="kw">CREATE INDEX</span> rp_group_id_idx <span class="kw">ON</span> resource_permissions(group_id) <span class="kw">WHERE</span> group_id <span class="kw">IS NOT NULL</span>;
-
-<span class="cm">-- Lookup by resource</span>
-<span class="kw">CREATE INDEX</span> rp_workspace_id_idx <span class="kw">ON</span> resource_permissions(workspace_id) <span class="kw">WHERE</span> workspace_id <span class="kw">IS NOT NULL</span>;
-<span class="kw">CREATE INDEX</span> rp_folder_id_idx    <span class="kw">ON</span> resource_permissions(folder_id)    <span class="kw">WHERE</span> folder_id <span class="kw">IS NOT NULL</span>;
-<span class="kw">CREATE INDEX</span> rp_map_id_idx       <span class="kw">ON</span> resource_permissions(map_id)       <span class="kw">WHERE</span> map_id <span class="kw">IS NOT NULL</span>;
-<span class="kw">CREATE INDEX</span> rp_layer_id_idx     <span class="kw">ON</span> resource_permissions(layer_id)     <span class="kw">WHERE</span> layer_id <span class="kw">IS NOT NULL</span>;
-
-<span class="cm">-- Hot path: user/group effective role on a layer</span>
-<span class="kw">CREATE INDEX</span> rp_user_layer_idx  <span class="kw">ON</span> resource_permissions(user_id, layer_id, role_level)
-    <span class="kw">WHERE</span> user_id <span class="kw">IS NOT NULL AND</span> layer_id <span class="kw">IS NOT NULL</span>;
-<span class="kw">CREATE INDEX</span> rp_group_layer_idx <span class="kw">ON</span> resource_permissions(group_id, layer_id, role_level)
-    <span class="kw">WHERE</span> group_id <span class="kw">IS NOT NULL AND</span> layer_id <span class="kw">IS NOT NULL</span>;</code></pre>
-
-<!-- 2.8 Version History -->
-<h3 id="schema-versions">2.8 Version History <span style="color:var(--green);font-weight:400;font-size:14px">(new)</span></h3>
-<pre><code><span class="kw">CREATE TABLE</span> resource_versions (
-    id            <span class="ty">BIGSERIAL</span> <span class="kw">PRIMARY KEY</span>,
-    resource_type <span class="ty">resource_type</span> <span class="kw">NOT NULL</span>,
-    resource_id   <span class="ty">UUID</span> <span class="kw">NOT NULL</span>,
-    version       <span class="ty">INT</span> <span class="kw">NOT NULL</span>,
-    changes       <span class="ty">JSONB</span> <span class="kw">NOT NULL</span>,       <span class="cm">-- snapshot of changed fields</span>
-    changed_by    <span class="ty">UUID</span> <span class="kw">REFERENCES</span> users(id),
-    changed_at    <span class="ty">TIMESTAMPTZ</span> <span class="kw">NOT NULL DEFAULT</span> <span class="fn">now</span>(),
-    <span class="kw">UNIQUE</span> (resource_type, resource_id, version)
-);
-
-<span class="kw">CREATE INDEX</span> rv_resource_idx   <span class="kw">ON</span> resource_versions(resource_type, resource_id);
-<span class="kw">CREATE INDEX</span> rv_changed_at_idx <span class="kw">ON</span> resource_versions(changed_at <span class="kw">DESC</span>);</code></pre>
-
-<!-- 2.9 Drop Old -->
-<h3 id="schema-drop">2.9 Drop Old Objects</h3>
-<pre><code><span class="kw">DROP TABLE</span> permissions;
-<span class="kw">DROP TABLE</span> roles;
-<span class="kw">DROP TABLE</span> layer_owners;
-<span class="kw">DROP FUNCTION IF EXISTS</span> <span class="fn">can_user_do</span>;</code></pre>
-</section>
-
-<!-- ============================================================ -->
-<!-- 3. ROLE SYSTEM -->
-<!-- ============================================================ -->
-<section id="roles">
-<h2>3. Role System</h2>
-<p>Roles are a Python <code>IntEnum</code> &mdash; no database table. The integer is stored directly in <code>resource_permissions.role_level</code>.</p>
-
-<h3 id="role-levels">Role Levels</h3>
 <table>
-  <thead>
-    <tr><th>Level</th><th>Role</th><th>Can Read</th><th>Can Edit</th><th>Can Manage Perms</th><th>Can Admin</th><th>Description</th></tr>
-  </thead>
-  <tbody>
-    <tr><td><code>1</code></td><td><span class="badge badge-viewer">VIEWER</span></td><td>Yes</td><td>&mdash;</td><td>&mdash;</td><td>&mdash;</td><td>Read only</td></tr>
-    <tr><td><code>2</code></td><td><span class="badge badge-editor">EDITOR</span></td><td>Yes</td><td>Yes</td><td>&mdash;</td><td>&mdash;</td><td>Edit features/data</td></tr>
-    <tr><td><code>3</code></td><td><span class="badge badge-manager">MANAGER</span></td><td>Yes</td><td>Yes</td><td>Yes</td><td>&mdash;</td><td>+ grant/revoke viewer &amp; editor to others</td></tr>
-    <tr><td><code>4</code></td><td><span class="badge badge-admin">ADMIN</span></td><td>Yes</td><td>Yes</td><td>Yes</td><td>Yes</td><td>+ grant/revoke manager &amp; admin, remove managers</td></tr>
-  </tbody>
+  <tr><th>who_user_id / who_group_id</th><th>resource_type</th><th>resource_id</th><th>role_level</th><th>Why this row exists</th></tr>
+  <tr><td class="mono">alice</td><td><code>workspace</code></td><td>Israel Survey Org</td><td><span class="badge badge-admin">ADMIN 4</span></td><td>Alice owns the workspace</td></tr>
+  <tr><td class="mono">bob</td><td><code>map</code></td><td>Northern Survey 2025</td><td><span class="badge badge-editor">EDITOR 2</span></td><td>Bob can edit features in this specific map's layers</td></tr>
+  <tr><td class="mono">field-team (group)</td><td><code>layer</code></td><td>Survey Points</td><td><span class="badge badge-editor">EDITOR 2</span></td><td>All members of field-team can edit survey points</td></tr>
+  <tr><td class="mono">carol</td><td><code>layer</code></td><td>Roads</td><td><span class="badge badge-viewer">VIEWER 1</span></td><td>Carol can read roads but not edit them</td></tr>
+  <tr><td class="mono">dave</td><td><code>map</code></td><td>Shared Base</td><td><span class="badge badge-viewer">VIEWER 1</span></td><td>Dave can open the embedded map when it's referenced</td></tr>
 </table>
-
-<h4>System-Level Roles (flags on users table)</h4>
-<table>
-  <thead><tr><th>Flag</th><th>Effect</th></tr></thead>
-  <tbody>
-    <tr><td><span class="badge badge-super">is_superviewer</span></td><td>Viewer on everything system-wide, no edits</td></tr>
-    <tr><td><span class="badge badge-super">is_superadmin</span></td><td>Full access to everything</td></tr>
-  </tbody>
-</table>
-
-<h3 id="role-grant-rules">Grant Rules</h3>
-<div class="card">
-  <ul>
-    <li><span class="badge badge-manager">MANAGER</span> can grant/revoke: <span class="badge badge-viewer">VIEWER</span>, <span class="badge badge-editor">EDITOR</span></li>
-    <li><span class="badge badge-admin">ADMIN</span> can grant/revoke: <span class="badge badge-viewer">VIEWER</span>, <span class="badge badge-editor">EDITOR</span>, <span class="badge badge-manager">MANAGER</span>, <span class="badge badge-admin">ADMIN</span></li>
-    <li>Cannot remove the <strong>last admin</strong> from a resource (orphan protection)</li>
-    <li><strong>Creator</strong> auto-gets <span class="badge badge-admin">ADMIN</span> (inserted on resource creation)</li>
-    <li>Multiple admins per resource allowed</li>
-  </ul>
-</div>
-
-<h3>Python Implementation</h3>
-<pre><code><span class="cm"># app/auth/roles.py</span>
-<span class="kw">from</span> enum <span class="kw">import</span> IntEnum
-
-<span class="kw">class</span> <span class="ty">RoleLevel</span>(IntEnum):
-    VIEWER  = <span class="num">1</span>   <span class="cm"># read only</span>
-    EDITOR  = <span class="num">2</span>   <span class="cm"># edit features/data</span>
-    MANAGER = <span class="num">3</span>   <span class="cm"># + grant/revoke viewer & editor to others</span>
-    ADMIN   = <span class="num">4</span>   <span class="cm"># + grant/revoke manager & admin, remove managers</span>
-
-    @property
-    <span class="kw">def</span> <span class="fn">can_read</span>(self) -> bool:
-        <span class="kw">return</span> self >= RoleLevel.VIEWER
-
-    @property
-    <span class="kw">def</span> <span class="fn">can_edit</span>(self) -> bool:
-        <span class="kw">return</span> self >= RoleLevel.EDITOR
-
-    @property
-    <span class="kw">def</span> <span class="fn">can_manage_perms</span>(self) -> bool:
-        <span class="kw">return</span> self >= RoleLevel.MANAGER
-
-    @property
-    <span class="kw">def</span> <span class="fn">can_admin</span>(self) -> bool:
-        <span class="kw">return</span> self >= RoleLevel.ADMIN
-
-    <span class="kw">def</span> <span class="fn">can_grant</span>(self, target_role: <span class="str">"RoleLevel"</span>) -> bool:
-        <span class="str">"""Managers can grant viewer/editor. Admins can grant anything."""</span>
-        <span class="kw">if</span> self >= RoleLevel.ADMIN:
-            <span class="kw">return</span> <span class="num">True</span>
-        <span class="kw">if</span> self >= RoleLevel.MANAGER:
-            <span class="kw">return</span> target_role <= RoleLevel.EDITOR
-        <span class="kw">return</span> <span class="num">False</span></code></pre>
-
-<h3 id="role-extensibility">Extensibility</h3>
-<div class="callout callout-ok">
-  <strong>To add a new role:</strong> Add an enum member to <code>RoleLevel</code>, adjust integer ordering if needed (migration to renumber existing rows). The role capabilities are derived from the level via properties. No DB table changes needed.
-</div>
-</section>
-
-<!-- ============================================================ -->
-<!-- 4. PERMISSION RESOLUTION -->
-<!-- ============================================================ -->
-<section id="resolution">
-<h2>4. Permission Resolution</h2>
-
-<h3 id="resolution-no-cascade">No Cascade at Query Time</h3>
-<p>Unlike the old system which walked <code>layer &rarr; group_layer &rarr; database</code>, the new system stores <strong>flat permission rows per resource</strong>. When a user grants permissions on a folder, the UI asks which children to include and issues a bulk <code>POST /permissions/bulk</code> creating individual rows.</p>
 
 <div class="callout callout-warn">
-  <strong>Permission on map &ne; permission on layers inside.</strong> A user with map access can see the map exists and open it, but can only see layers they have explicit permission for (or layers marked <code>is_public</code>).
+  <strong>No cascade at query time.</strong> If Bob is EDITOR on "Northern Survey 2025" (a map), that does NOT automatically make him an editor on its layers. The frontend UI uses <em>group permission grants</em> (<code>POST /maps/{id}/groups/{gid}/permissions</code>) to create individual layer permission rows in bulk — but those rows are still stored individually in <code>resource_permissions</code>.
 </div>
 
-<h3 id="resolution-groups">Group Hierarchy Expansion (once per request)</h3>
-<pre><code><span class="kw">CREATE OR REPLACE FUNCTION</span> <span class="fn">get_user_group_ids</span>(
-    p_user_id    <span class="ty">UUID</span>,
-    p_ms_group_ids <span class="ty">TEXT[]</span>
-) <span class="kw">RETURNS</span> <span class="ty">UUID[]</span> <span class="kw">AS</span> $$
-<span class="kw">DECLARE</span>
-    v_result <span class="ty">UUID[]</span>;
-<span class="kw">BEGIN</span>
-    <span class="kw">WITH RECURSIVE</span>
-    direct_groups <span class="kw">AS</span> (
-        <span class="cm">-- MS groups from token</span>
-        <span class="kw">SELECT</span> id <span class="kw">FROM</span> ms_groups <span class="kw">WHERE</span> ms_group_id = <span class="fn">ANY</span>(p_ms_group_ids)
-        <span class="kw">UNION</span>
-        <span class="cm">-- Custom groups user is a direct member of</span>
-        <span class="kw">SELECT</span> group_id <span class="kw">FROM</span> custom_group_members <span class="kw">WHERE</span> user_id = p_user_id
-        <span class="kw">UNION</span>
-        <span class="cm">-- Custom groups linked to user's MS groups</span>
-        <span class="kw">SELECT</span> cgml.custom_group_id
-        <span class="kw">FROM</span> custom_group_ms_links cgml
-        <span class="kw">WHERE</span> cgml.ms_group_id = <span class="fn">ANY</span>(p_ms_group_ids)
-    ),
-    ancestors(id, depth) <span class="kw">AS</span> (
-        <span class="kw">SELECT</span> id, <span class="num">0</span> <span class="kw">FROM</span> direct_groups
-        <span class="kw">UNION ALL</span>
-        <span class="kw">SELECT</span> g.parent_group_id, a.depth + <span class="num">1</span>
-        <span class="kw">FROM</span> ms_groups g
-        <span class="kw">JOIN</span> ancestors a <span class="kw">ON</span> g.id = a.id
-        <span class="kw">WHERE</span> g.parent_group_id <span class="kw">IS NOT NULL</span>
-          <span class="kw">AND</span> a.depth < <span class="num">16</span>
-    )
-    <span class="kw">SELECT</span> <span class="fn">ARRAY</span>(<span class="kw">SELECT DISTINCT</span> id <span class="kw">FROM</span> ancestors <span class="kw">WHERE</span> id <span class="kw">IS NOT NULL</span>)
-    <span class="kw">INTO</span> v_result;
+<h3 id="ex-embedded">1.3 Embedded Maps</h3>
+<p>A map group can embed another map as its content. This lets teams reuse a curated base map without duplicating layers. Here is how it looks at the DB level:</p>
 
-    <span class="kw">RETURN</span> v_result;
-<span class="kw">END</span>;
-$$ <span class="kw">LANGUAGE</span> plpgsql <span class="kw">STABLE</span>;</code></pre>
+<div class="tree"><span class="note">maps table:</span>
+  id = "shared-base"   name = "Shared Base"
+  id = "southern-map"  name = "Southern Survey 2025"
 
-<h3 id="resolution-effective">Effective Role Check</h3>
-<pre><code><span class="kw">CREATE OR REPLACE FUNCTION</span> <span class="fn">get_effective_role</span>(
-    p_user_id       <span class="ty">UUID</span>,
-    p_group_ids     <span class="ty">UUID[]</span>,
-    p_resource_type <span class="ty">resource_type</span>,
-    p_resource_id   <span class="ty">UUID</span>
-) <span class="kw">RETURNS</span> <span class="ty">SMALLINT</span> <span class="kw">AS</span> $$
-    <span class="kw">SELECT MAX</span>(rp.role_level)
-    <span class="kw">FROM</span> resource_permissions rp
-    <span class="kw">WHERE</span> (rp.user_id = p_user_id <span class="kw">OR</span> rp.group_id = <span class="fn">ANY</span>(p_group_ids))
-      <span class="kw">AND CASE</span> p_resource_type
-          <span class="kw">WHEN</span> <span class="str">'workspace'</span> <span class="kw">THEN</span> rp.workspace_id = p_resource_id
-          <span class="kw">WHEN</span> <span class="str">'folder'</span>    <span class="kw">THEN</span> rp.folder_id = p_resource_id
-          <span class="kw">WHEN</span> <span class="str">'map'</span>       <span class="kw">THEN</span> rp.map_id = p_resource_id
-          <span class="kw">WHEN</span> <span class="str">'layer'</span>     <span class="kw">THEN</span> rp.layer_id = p_resource_id
-      <span class="kw">END</span>;
-$$ <span class="kw">LANGUAGE</span> sql <span class="kw">STABLE</span>;</code></pre>
-<p>Highest role wins. No deny. One query.</p>
+<span class="note">map_groups table:</span>
+  id = "embed-group-1"
+  map_id          = "southern-map"     <span class="note">← belongs to the parent map</span>
+  embedded_map_id = "shared-base"      <span class="note">← this is what makes it an embedded-map node</span>
+  name            = "Shared Base"      <span class="note">← display name, copied from embedded map on create</span>
+  parent_id       = NULL               <span class="note">← top-level in the parent map's tree</span>
 
-<h3 id="resolution-python">Python Permission Check</h3>
-<pre><code><span class="cm"># app/auth/permissions.py</span>
-
-<span class="kw">async def</span> <span class="fn">get_effective_role</span>(db, ctx, resource_type, resource_id) -> RoleLevel | <span class="num">None</span>:
-    <span class="kw">if</span> ctx.is_superadmin:
-        <span class="kw">return</span> RoleLevel.ADMIN
-    group_ids = <span class="kw">await</span> get_user_group_ids(db, ctx)
-    level = <span class="kw">await</span> db.execute(
-        text(<span class="str">"SELECT get_effective_role(...)"</span>), {...}
-    )
-    result = level.scalar()
-    <span class="kw">if</span> ctx.is_superviewer:
-        <span class="kw">return</span> <span class="fn">max</span>(RoleLevel.VIEWER, RoleLevel(result)) <span class="kw">if</span> result <span class="kw">else</span> RoleLevel.VIEWER
-    <span class="kw">return</span> RoleLevel(result) <span class="kw">if</span> result <span class="kw">else</span> <span class="num">None</span>
-
-<span class="kw">async def</span> <span class="fn">can_user_do</span>(db, ctx, resource_type, resource_id, operation) -> bool:
-    role = <span class="kw">await</span> get_effective_role(db, ctx, resource_type, resource_id)
-    <span class="kw">if</span> role <span class="kw">is</span> <span class="num">None</span>:
-        <span class="kw">return</span> <span class="num">False</span>
-    <span class="kw">match</span> operation:
-        <span class="kw">case</span> <span class="str">"read"</span>:           <span class="kw">return</span> role.can_read
-        <span class="kw">case</span> <span class="str">"edit"</span> | <span class="str">"write"</span>: <span class="kw">return</span> role.can_edit
-        <span class="kw">case</span> <span class="str">"manage_perms"</span>:   <span class="kw">return</span> role.can_manage_perms
-        <span class="kw">case</span> <span class="str">"admin"</span>:          <span class="kw">return</span> role.can_admin</code></pre>
-
-<h3 id="resolution-map-open">Permission Fetch on Map Open</h3>
-<p>When a user opens a map, <strong>one SQL function</strong> returns all accessible layers with their effective roles:</p>
-<pre><code><span class="kw">CREATE OR REPLACE FUNCTION</span> <span class="fn">get_map_layers_for_user</span>(
-    p_user_id   <span class="ty">UUID</span>,
-    p_group_ids <span class="ty">UUID[]</span>,
-    p_map_id    <span class="ty">UUID</span>
-) <span class="kw">RETURNS TABLE</span> (
-    layer_id       <span class="ty">UUID</span>,
-    layer_name     <span class="ty">TEXT</span>,
-    sort_order     <span class="ty">INT</span>,
-    is_visible     <span class="ty">BOOLEAN</span>,
-    opacity        <span class="ty">REAL</span>,
-    is_public      <span class="ty">BOOLEAN</span>,
-    effective_role <span class="ty">SMALLINT</span>
-) <span class="kw">AS</span> $$
-    <span class="kw">SELECT</span>
-        l.id, l.name, ml.sort_order, ml.is_visible, ml.opacity, l.is_public,
-        (<span class="kw">SELECT MAX</span>(rp.role_level)
-         <span class="kw">FROM</span> resource_permissions rp
-         <span class="kw">WHERE</span> (rp.user_id = p_user_id <span class="kw">OR</span> rp.group_id = <span class="fn">ANY</span>(p_group_ids))
-           <span class="kw">AND</span> rp.layer_id = l.id
-        ) <span class="kw">AS</span> effective_role
-    <span class="kw">FROM</span> map_layers ml
-    <span class="kw">JOIN</span> layers l <span class="kw">ON</span> l.id = ml.layer_id
-    <span class="kw">WHERE</span> ml.map_id = p_map_id
-      <span class="kw">AND</span> l.deleted_at <span class="kw">IS NULL</span>
-      <span class="kw">AND</span> (
-          <span class="kw">EXISTS</span> (
-              <span class="kw">SELECT</span> <span class="num">1</span> <span class="kw">FROM</span> resource_permissions rp
-              <span class="kw">WHERE</span> (rp.user_id = p_user_id <span class="kw">OR</span> rp.group_id = <span class="fn">ANY</span>(p_group_ids))
-                <span class="kw">AND</span> rp.layer_id = l.id
-          )
-          <span class="kw">OR</span> l.is_public = <span class="num">TRUE</span>
-      )
-    <span class="kw">ORDER BY</span> ml.sort_order;
-$$ <span class="kw">LANGUAGE</span> sql <span class="kw">STABLE</span>;</code></pre>
+<span class="note">map_layers table:</span>
+  <span class="note">→ NO rows link "southern-map" to the roads/topography layers directly.</span>
+  <span class="note">→ Layers are resolved dynamically from "shared-base" at query time.</span>
+  <span class="note">→ Permissions are checked against "shared-base" (the embedded map), not "southern-map".</span></div>
 
 <div class="callout callout-ok">
-  <strong>Total queries to open a map:</strong> 3 (group expansion + map role check + layers with roles). Constant regardless of layer count.
+  <strong>Circular reference protection:</strong> The DB has a CHECK constraint preventing self-embed (<code>embedded_map_id != map_id</code>). The API's <code>_check_embed_cycle()</code> function walks the embed chain before inserting to catch deeper cycles (max depth 5).
 </div>
-</section>
 
-<!-- ============================================================ -->
-<!-- 5. API ENDPOINTS -->
-<!-- ============================================================ -->
-<section id="api">
-<h2>5. API Endpoints</h2>
+<!-- ======================================================= SECTION 2: DATABASE SCHEMA -->
+<h2 id="schema">Section 2 — Database Schema</h2>
 
-<h3 id="api-workspaces">Workspaces</h3>
+<p>All tables below live in the <strong>geo_meta</strong> database unless marked <em>(shard DB)</em>. The features table lives in <strong>geo_features</strong> and is partitioned. Migrations use Alembic with two independent branches (<code>meta</code> and <code>features</code>).</p>
+
+<h3 id="db-workspaces">workspaces</h3>
+<p>Top-level organizational container. One org typically has one workspace, but the schema supports many.</p>
 <table>
-  <thead><tr><th>Method</th><th>Path</th><th>Auth</th></tr></thead>
-  <tbody>
-    <tr><td><code>GET</code></td><td><code>/workspaces</code></td><td>authenticated (filtered to accessible)</td></tr>
-    <tr><td><code>POST</code></td><td><code>/workspaces</code></td><td><span class="badge badge-super">superadmin</span></td></tr>
-    <tr><td><code>GET</code></td><td><code>/workspaces/{id}</code></td><td><span class="badge badge-viewer">viewer+</span> on workspace</td></tr>
-    <tr><td><code>PUT</code></td><td><code>/workspaces/{id}</code></td><td><span class="badge badge-admin">admin</span> on workspace</td></tr>
-    <tr><td><code>DELETE</code></td><td><code>/workspaces/{id}</code></td><td><span class="badge badge-super">superadmin</span></td></tr>
-  </tbody>
+  <tr><th>Column</th><th>Type</th><th>Purpose</th></tr>
+  <tr><td class="mono">id</td><td><code>UUID PK</code></td><td>Primary key</td></tr>
+  <tr><td class="mono">name</td><td><code>TEXT NOT NULL</code></td><td>Display name, must be unique per org</td></tr>
+  <tr><td class="mono">description</td><td><code>TEXT</code></td><td>Optional description shown in UI</td></tr>
+  <tr><td class="mono">created_by</td><td><code>UUID → users</code></td><td>Who created it (audit trail)</td></tr>
+  <tr><td class="mono">created_at</td><td><code>TIMESTAMPTZ DEFAULT now()</code></td><td>Creation timestamp</td></tr>
+  <tr><td class="mono">updated_at</td><td><code>TIMESTAMPTZ DEFAULT now()</code></td><td>Last metadata change; bumped on name/description update</td></tr>
+  <tr><td class="mono">deleted_at</td><td><code>TIMESTAMPTZ</code></td><td>Soft delete — NULL means active</td></tr>
 </table>
 
-<h3 id="api-folders">Folders</h3>
+<h3 id="db-folders">folders</h3>
+<p>Organizes maps inside a workspace. Supports nesting (parent_id) so teams can have sub-folders.</p>
 <table>
-  <thead><tr><th>Method</th><th>Path</th><th>Auth</th></tr></thead>
-  <tbody>
-    <tr><td><code>GET</code></td><td><code>/workspaces/{ws_id}/folders</code></td><td><span class="badge badge-viewer">viewer+</span> on workspace</td></tr>
-    <tr><td><code>POST</code></td><td><code>/workspaces/{ws_id}/folders</code></td><td><span class="badge badge-editor">editor+</span> on workspace</td></tr>
-    <tr><td><code>GET</code></td><td><code>/folders/{id}</code></td><td><span class="badge badge-viewer">viewer+</span> on folder</td></tr>
-    <tr><td><code>PUT</code></td><td><code>/folders/{id}</code></td><td><span class="badge badge-editor">editor+</span> on folder</td></tr>
-    <tr><td><code>DELETE</code></td><td><code>/folders/{id}</code></td><td><span class="badge badge-admin">admin</span> on folder</td></tr>
-    <tr><td><code>PATCH</code></td><td><code>/folders/{id}/move</code></td><td><span class="badge badge-admin">admin</span> on folder</td></tr>
-  </tbody>
+  <tr><th>Column</th><th>Type</th><th>Purpose</th></tr>
+  <tr><td class="mono">id</td><td><code>UUID PK</code></td><td>Primary key</td></tr>
+  <tr><td class="mono">workspace_id</td><td><code>UUID → workspaces NOT NULL</code></td><td>Which workspace this folder belongs to</td></tr>
+  <tr><td class="mono">parent_id</td><td><code>UUID → folders</code></td><td>NULL = root folder; non-null = nested inside another folder</td></tr>
+  <tr><td class="mono">name</td><td><code>TEXT NOT NULL</code></td><td>Folder name; unique within (workspace, parent)</td></tr>
+  <tr><td class="mono">sort_order</td><td><code>INT DEFAULT 0</code></td><td>Display order among siblings; lower = first</td></tr>
+  <tr><td class="mono">created_by</td><td><code>UUID → users</code></td><td>Who created the folder</td></tr>
+  <tr><td class="mono">created_at</td><td><code>TIMESTAMPTZ</code></td><td>Creation timestamp</td></tr>
+  <tr><td class="mono">deleted_at</td><td><code>TIMESTAMPTZ</code></td><td>Soft delete</td></tr>
 </table>
 
-<h3 id="api-maps">Maps</h3>
+<h3 id="db-maps">maps</h3>
+<p>The primary working unit. A map belongs to a workspace (and optionally a folder) and contains an ordered group+layer tree. Maps have two change signals: <em>metadata</em> (name/description changed) and <em>content</em> (layers added/removed/edited).</p>
 <table>
-  <thead><tr><th>Method</th><th>Path</th><th>Auth</th></tr></thead>
-  <tbody>
-    <tr><td><code>GET</code></td><td><code>/workspaces/{ws_id}/maps</code></td><td>authenticated (filtered)</td></tr>
-    <tr><td><code>POST</code></td><td><code>/workspaces/{ws_id}/maps</code></td><td><span class="badge badge-editor">editor+</span> on workspace</td></tr>
-    <tr><td><code>GET</code></td><td><code>/maps/{id}</code></td><td><span class="badge badge-viewer">viewer+</span> on map OR <code>is_public</code></td></tr>
-    <tr><td><code>GET</code></td><td><code>/maps/{id}/open</code></td><td><span class="badge badge-viewer">viewer+</span> on map OR <code>is_public</code> (returns layers w/ roles)</td></tr>
-    <tr><td><code>PUT</code></td><td><code>/maps/{id}</code></td><td><span class="badge badge-editor">editor+</span> on map</td></tr>
-    <tr><td><code>DELETE</code></td><td><code>/maps/{id}</code></td><td><span class="badge badge-admin">admin</span> on map</td></tr>
-    <tr><td><code>POST</code></td><td><code>/maps/{id}/layers</code></td><td><span class="badge badge-editor">editor+</span> on map AND <span class="badge badge-viewer">viewer+</span> on layer</td></tr>
-    <tr><td><code>DELETE</code></td><td><code>/maps/{id}/layers/{layer_id}</code></td><td><span class="badge badge-editor">editor+</span> on map</td></tr>
-    <tr><td><code>PUT</code></td><td><code>/maps/{id}/layers/{layer_id}</code></td><td><span class="badge badge-editor">editor+</span> on map (sort/visibility/opacity)</td></tr>
-  </tbody>
+  <tr><th>Column</th><th>Type</th><th>Purpose</th></tr>
+  <tr><td class="mono">id</td><td><code>UUID PK</code></td><td>Primary key</td></tr>
+  <tr><td class="mono">workspace_id</td><td><code>UUID → workspaces NOT NULL</code></td><td>Which workspace this map belongs to; required for permission scoping</td></tr>
+  <tr><td class="mono">folder_id</td><td><code>UUID → folders</code></td><td>NULL = root of workspace; non-null = inside a folder</td></tr>
+  <tr><td class="mono">name</td><td><code>TEXT NOT NULL</code></td><td>Display name</td></tr>
+  <tr><td class="mono">description</td><td><code>TEXT</code></td><td>Optional description</td></tr>
+  <tr><td class="mono">extent</td><td><code>GEOMETRY(Polygon, 4326)</code></td><td>Union bbox of all member layers; auto-maintained by <code>refresh_map_extent()</code>; used to fitBounds() on open</td></tr>
+  <tr><td class="mono">created_by</td><td><code>UUID → users</code></td><td>Who created the map</td></tr>
+  <tr><td class="mono">updated_by</td><td><code>UUID → users</code></td><td>Who last changed name/description; wired by version recording in <code>update_map()</code></td></tr>
+  <tr><td class="mono">created_at</td><td><code>TIMESTAMPTZ</code></td><td>Creation timestamp</td></tr>
+  <tr><td class="mono">updated_at</td><td><code>TIMESTAMPTZ</code></td><td>Last metadata-level change (name/description)</td></tr>
+  <tr><td class="mono">content_version</td><td><code>INT DEFAULT 0</code></td><td>Increments when any layer's features change, or when layers/groups are added/removed/reordered. Used to build ETag on <code>GET /maps/{id}/open</code>.</td></tr>
+  <tr><td class="mono">content_updated_at</td><td><code>TIMESTAMPTZ</code></td><td>When the map's content last changed; used by freshness endpoint</td></tr>
+  <tr><td class="mono">content_updated_by</td><td><code>UUID → users</code></td><td>Who triggered the last content change; shown in freshness response and version list</td></tr>
+  <tr><td class="mono">deleted_at</td><td><code>TIMESTAMPTZ</code></td><td>Soft delete</td></tr>
 </table>
 
-<h3 id="api-layers">Layers</h3>
+<h3 id="db-map-groups">map_groups</h3>
+<p>Organizes layers within a map into a hierarchy. Can also embed another map entirely (when <code>embedded_map_id</code> is set, the group's children are resolved from that map at query time).</p>
 <table>
-  <thead><tr><th>Method</th><th>Path</th><th>Auth</th></tr></thead>
-  <tbody>
-    <tr><td><code>GET</code></td><td><code>/workspaces/{ws_id}/layers</code></td><td>authenticated (filtered)</td></tr>
-    <tr><td><code>POST</code></td><td><code>/workspaces/{ws_id}/layers</code></td><td><span class="badge badge-editor">editor+</span> on workspace</td></tr>
-    <tr><td><code>GET</code></td><td><code>/layers/{id}</code></td><td><span class="badge badge-viewer">viewer+</span> OR <code>is_public</code></td></tr>
-    <tr><td><code>PUT</code></td><td><code>/layers/{id}</code></td><td><span class="badge badge-editor">editor+</span> on layer</td></tr>
-    <tr><td><code>DELETE</code></td><td><code>/layers/{id}</code></td><td><span class="badge badge-admin">admin</span> on layer</td></tr>
-    <tr><td><code>GET</code></td><td><code>/layers/{id}/maps</code></td><td><span class="badge badge-viewer">viewer+</span> on layer (which maps contain it)</td></tr>
-    <tr><td><code>POST</code></td><td><code>/layers/{id}/lock</code></td><td><span class="badge badge-editor">editor+</span> on layer</td></tr>
-    <tr><td><code>DELETE</code></td><td><code>/layers/{id}/lock</code></td><td><span class="badge badge-editor">editor+</span> on layer</td></tr>
-    <tr><td><code>GET</code></td><td><code>/layers/{id}/schema</code></td><td><span class="badge badge-viewer">viewer+</span> on layer</td></tr>
-    <tr><td><code>PUT</code></td><td><code>/layers/{id}/schema</code></td><td><span class="badge badge-editor">editor+</span> on layer</td></tr>
-  </tbody>
+  <tr><th>Column</th><th>Type</th><th>Purpose</th></tr>
+  <tr><td class="mono">id</td><td><code>UUID PK</code></td><td>Primary key</td></tr>
+  <tr><td class="mono">map_id</td><td><code>UUID → maps NOT NULL</code></td><td>Which map this group belongs to</td></tr>
+  <tr><td class="mono">parent_id</td><td><code>UUID → map_groups</code></td><td>NULL = top-level in map; non-null = nested inside another group</td></tr>
+  <tr><td class="mono">embedded_map_id</td><td><code>UUID → maps</code></td><td>When set, this group is a live reference to another map. Its children are resolved dynamically from the embedded map's layer tree. DB constraint prevents self-embed.</td></tr>
+  <tr><td class="mono">name</td><td><code>TEXT NOT NULL</code></td><td>Display label. For embedded groups, copied from the embedded map's name at creation.</td></tr>
+  <tr><td class="mono">sort_order</td><td><code>INT DEFAULT 0</code></td><td>Order among siblings at same parent level</td></tr>
+  <tr><td class="mono">is_expanded</td><td><code>BOOLEAN DEFAULT TRUE</code></td><td>Default expand state in UI tree panel</td></tr>
+  <tr><td class="mono">created_by</td><td><code>UUID → users</code></td><td>Who added this group</td></tr>
+  <tr><td class="mono">created_at</td><td><code>TIMESTAMPTZ</code></td><td>Creation timestamp</td></tr>
+</table>
+<p><em>Constraints:</em> <code>CHECK (parent_id IS NULL OR parent_id &lt;&gt; id)</code> (no self-parent), <code>CHECK (embedded_map_id IS NULL OR embedded_map_id &lt;&gt; map_id)</code> (no self-embed), <code>UNIQUE (map_id, COALESCE(parent_id, uuid_nil), name)</code> (unique name per level).</p>
+
+<h3 id="db-map-layers">map_layers</h3>
+<p>Join table linking a layer into a map, with position, visibility, and an optional per-map-context filter expression.</p>
+<table>
+  <tr><th>Column</th><th>Type</th><th>Purpose</th></tr>
+  <tr><td class="mono">id</td><td><code>UUID PK</code></td><td>Primary key (used in PUT /maps/{id}/layers/{id})</td></tr>
+  <tr><td class="mono">map_id</td><td><code>UUID → maps NOT NULL</code></td><td>Which map</td></tr>
+  <tr><td class="mono">layer_id</td><td><code>UUID → layers NOT NULL</code></td><td>Which layer (a layer can appear in multiple maps)</td></tr>
+  <tr><td class="mono">group_id</td><td><code>UUID → map_groups</code></td><td>Which group inside the map; NULL = root level of map. ON DELETE SET NULL so the layer stays in the map if its group is deleted.</td></tr>
+  <tr><td class="mono">sort_order</td><td><code>INT DEFAULT 0</code></td><td>Order among siblings within the same parent (group or root)</td></tr>
+  <tr><td class="mono">is_visible</td><td><code>BOOLEAN DEFAULT TRUE</code></td><td>Default visibility state for this layer in this map; the UI eye toggle sets this</td></tr>
+  <tr><td class="mono">filter_expression</td><td><code>JSONB</code></td><td>Optional per-map-context filter DSL; applied automatically when features are fetched in this map's context. Same structure as the expression DSL.</td></tr>
+  <tr><td class="mono">added_by</td><td><code>UUID → users</code></td><td>Who added this layer to the map</td></tr>
+  <tr><td class="mono">added_at</td><td><code>TIMESTAMPTZ</code></td><td>When added</td></tr>
+</table>
+<p><em>Constraint:</em> <code>UNIQUE (map_id, layer_id)</code> — a layer appears at most once per map.</p>
+
+<h3 id="db-layers">layers</h3>
+<p>The data layer. Holds schema definition (JSON schema for feature properties), geometry type, bounding box, and change tracking. The actual features are in the shard DB.</p>
+<table>
+  <tr><th>Column</th><th>Type</th><th>Purpose</th></tr>
+  <tr><td class="mono">id</td><td><code>UUID PK</code></td><td>Primary key; also used as the shard routing key</td></tr>
+  <tr><td class="mono">database_id</td><td><code>UUID → geo_databases NOT NULL</code></td><td>Which GeoDatabase owns this layer; used for permission scoping at database level</td></tr>
+  <tr><td class="mono">name</td><td><code>TEXT NOT NULL</code></td><td>Display name</td></tr>
+  <tr><td class="mono">description</td><td><code>TEXT</code></td><td>Optional description</td></tr>
+  <tr><td class="mono">status</td><td><code>TEXT DEFAULT 'draft'</code></td><td>draft / published / archived; controls visibility in ArcGIS Portal</td></tr>
+  <tr><td class="mono">shard_id</td><td><code>INT NOT NULL</code></td><td>Which shard DB holds features for this layer (currently always 0; designed for future horizontal scaling)</td></tr>
+  <tr><td class="mono">json_schema</td><td><code>JSONB</code></td><td>Field definitions for feature properties: <code>{"fields": [{"name": "status", "type": "string"}]}</code>. Used to validate expressions and attribute filters.</td></tr>
+  <tr><td class="mono">geometry_types</td><td><code>TEXT[]</code></td><td>Derived — auto-refreshed by <code>refresh_layer_geometry_types()</code> after every feature mutation. Values: POINT, LINESTRING, POLYGON, etc. Used for map panel icons and ArcGIS client filtering.</td></tr>
+  <tr><td class="mono">srid</td><td><code>INT DEFAULT 4326</code></td><td>Source CRS of this layer's features. Used for CRS reprojection when <code>?srid=</code> param differs.</td></tr>
+  <tr><td class="mono">bbox</td><td><code>GEOMETRY(Polygon, 4326)</code></td><td>Bounding envelope of all active features. Auto-maintained by <code>refresh_layer_bbox()</code>. NULL if no features. Used to populate <code>maps.extent</code> and for map fitBounds.</td></tr>
+  <tr><td class="mono">tags</td><td><code>TEXT[]</code></td><td>Free-form searchable tags</td></tr>
+  <tr><td class="mono">sort_order</td><td><code>INT DEFAULT 0</code></td><td>Display order within a database listing</td></tr>
+  <tr><td class="mono">is_locked</td><td><code>BOOLEAN DEFAULT FALSE</code></td><td>When true, all feature writes are rejected with 409. Lock/unlock via POST /layers/{id}/lock.</td></tr>
+  <tr><td class="mono">lock_reason</td><td><code>TEXT</code></td><td>Why the layer was locked (shown to users who try to edit)</td></tr>
+  <tr><td class="mono">locked_by</td><td><code>UUID → users</code></td><td>Who locked it</td></tr>
+  <tr><td class="mono">locked_at</td><td><code>TIMESTAMPTZ</code></td><td>When it was locked</td></tr>
+  <tr><td class="mono">updated_by</td><td><code>UUID → users</code></td><td><strong>NEW</strong> — Who last changed the layer's metadata (name, description, schema, status). Set by version recording in <code>update_layer()</code>.</td></tr>
+  <tr><td class="mono">features_updated_at</td><td><code>TIMESTAMPTZ</code></td><td><strong>NEW</strong> — When a feature (geometry or properties) was last changed. Updated unconditionally by <code>refresh_layer_feature_stamp()</code> on every feature mutation. Separate from <code>updated_at</code> which only tracks metadata changes.</td></tr>
+  <tr><td class="mono">features_updated_by</td><td><code>UUID → users</code></td><td><strong>NEW</strong> — Who last edited any feature in this layer. Used in freshness response and version attribution.</td></tr>
+  <tr><td class="mono">created_by</td><td><code>UUID → users</code></td><td>Who created the layer</td></tr>
+  <tr><td class="mono">created_at</td><td><code>TIMESTAMPTZ</code></td><td>Creation timestamp</td></tr>
+  <tr><td class="mono">updated_at</td><td><code>TIMESTAMPTZ</code></td><td>Last <em>metadata</em> change (name/description/schema/status/tags). Separate from features_updated_at.</td></tr>
+  <tr><td class="mono">deleted_at</td><td><code>TIMESTAMPTZ</code></td><td>Soft delete — hard delete would break ArcGIS/Argo sync which track deleted feature IDs</td></tr>
 </table>
 
-<h3 id="api-permissions">Permissions</h3>
+<h3 id="db-users">users &amp; groups</h3>
+<p>Users can be MS Entra users (with <code>ms_object_id</code>) or local users (auto-created in DEV_MODE). Groups are MS Entra groups or custom groups defined in the system.</p>
 <table>
-  <thead><tr><th>Method</th><th>Path</th><th>Auth</th></tr></thead>
-  <tbody>
-    <tr><td><code>GET</code></td><td><code>/permissions?resource_type=X&amp;resource_id=Y</code></td><td><span class="badge badge-manager">manager+</span> on resource</td></tr>
-    <tr><td><code>POST</code></td><td><code>/permissions</code></td><td><span class="badge badge-manager">manager+</span> (grant rules apply)</td></tr>
-    <tr><td><code>POST</code></td><td><code>/permissions/bulk</code></td><td><span class="badge badge-manager">manager+</span> on each resource</td></tr>
-    <tr><td><code>PUT</code></td><td><code>/permissions/{id}</code></td><td><span class="badge badge-manager">manager+</span> (update role level)</td></tr>
-    <tr><td><code>DELETE</code></td><td><code>/permissions/{id}</code></td><td><span class="badge badge-manager">manager+</span> (revoke rules apply)</td></tr>
-    <tr><td><code>GET</code></td><td><code>/permissions/my</code></td><td>authenticated (own permissions)</td></tr>
-    <tr><td><code>GET</code></td><td><code>/permissions/effective?resource_type=X&amp;resource_id=Y</code></td><td>authenticated</td></tr>
-  </tbody>
+  <tr><th>Column</th><th>Type</th><th>Purpose</th></tr>
+  <tr><td class="mono">id</td><td><code>UUID PK</code></td><td>Internal stable ID; used in all FK references</td></tr>
+  <tr><td class="mono">ms_object_id</td><td><code>TEXT UNIQUE</code></td><td>MS Entra object ID; NULL for local users created in DEV_MODE</td></tr>
+  <tr><td class="mono">email</td><td><code>TEXT UNIQUE NOT NULL</code></td><td>Email address; used for login and display</td></tr>
+  <tr><td class="mono">display_name</td><td><code>TEXT</code></td><td>Full name shown in UI (freshness response, version history)</td></tr>
+  <tr><td class="mono">is_superadmin</td><td><code>BOOLEAN DEFAULT FALSE</code></td><td>Bypasses all permission checks; sees everything</td></tr>
+  <tr><td class="mono">is_active</td><td><code>BOOLEAN DEFAULT TRUE</code></td><td>Deactivated users can't log in</td></tr>
+  <tr><td class="mono">last_seen_at</td><td><code>TIMESTAMPTZ</code></td><td>Last authenticated request; debounced to 1 write per 60s via Redis sentinel key</td></tr>
 </table>
 
-<h3 id="api-users">Users</h3>
+<h3 id="db-permissions">resource_permissions</h3>
+<p>Central permission table. One row = one (subject, resource, role) grant. No deny rules. MAX(role_level) wins when multiple rows match a user via group membership.</p>
 <table>
-  <thead><tr><th>Method</th><th>Path</th><th>Auth</th></tr></thead>
-  <tbody>
-    <tr><td><code>PATCH</code></td><td><code>/users/{id}/flags</code></td><td><span class="badge badge-super">superadmin</span> (set is_superadmin / is_superviewer)</td></tr>
-  </tbody>
+  <tr><th>Column</th><th>Type</th><th>Purpose</th></tr>
+  <tr><td class="mono">id</td><td><code>UUID PK</code></td><td>Primary key</td></tr>
+  <tr><td class="mono">who_user_id</td><td><code>UUID → users</code></td><td>Direct user grant; NULL if this is a group grant</td></tr>
+  <tr><td class="mono">who_group_id</td><td><code>UUID → groups</code></td><td>Group grant; NULL if this is a user grant. Exactly one of these is non-null.</td></tr>
+  <tr><td class="mono">resource_type</td><td><code>TEXT NOT NULL</code></td><td>workspace / folder / map / layer</td></tr>
+  <tr><td class="mono">resource_id</td><td><code>UUID NOT NULL</code></td><td>The specific workspace/folder/map/layer being granted access to</td></tr>
+  <tr><td class="mono">role_level</td><td><code>INT NOT NULL</code></td><td>1=VIEWER, 2=EDITOR, 3=MANAGER, 4=ADMIN. Numeric so MAX() resolves conflicts.</td></tr>
+  <tr><td class="mono">granted_by</td><td><code>UUID → users</code></td><td>Who created this permission row</td></tr>
+  <tr><td class="mono">granted_at</td><td><code>TIMESTAMPTZ</code></td><td>When granted</td></tr>
 </table>
-</section>
+<p><em>Constraint:</em> <code>CHECK ((who_user_id IS NULL) != (who_group_id IS NULL))</code> — exactly one of user/group must be set.</p>
 
-<!-- ============================================================ -->
-<!-- 6. MIGRATION STRATEGY -->
-<!-- ============================================================ -->
-<section id="migration">
-<h2>6. Migration Strategy</h2>
-<p>Single Alembic migration: <code>007_permission_redesign.py</code></p>
+<h3 id="db-versions">resource_versions</h3>
+<p>Stores the full state snapshot of a resource at each version. <strong>Full snapshots, not diffs</strong> — this means you can view or restore any version in O(1) without replaying N patches.</p>
+<table>
+  <tr><th>Column</th><th>Type</th><th>Purpose</th></tr>
+  <tr><td class="mono">id</td><td><code>BIGSERIAL PK</code></td><td>Monotonically increasing row ID (not version number)</td></tr>
+  <tr><td class="mono">resource_type</td><td><code>ENUM(layer, map)</code></td><td>Which resource type this version belongs to</td></tr>
+  <tr><td class="mono">resource_id</td><td><code>UUID NOT NULL</code></td><td>Which specific layer or map</td></tr>
+  <tr><td class="mono">version</td><td><code>INT NOT NULL</code></td><td>Version number within this resource, starting at 1. Generated race-condition-free by <code>next_resource_version()</code> using FOR UPDATE.</td></tr>
+  <tr><td class="mono">snapshot</td><td><code>JSONB NOT NULL</code></td><td>Full state of the resource at this version (name, description, schema, status, tags, etc.). Not a diff.</td></tr>
+  <tr><td class="mono">changed_fields</td><td><code>TEXT[] NOT NULL</code></td><td>List of field names that changed from the previous version (e.g. ["name", "status"]). Used to display what changed in the version list UI.</td></tr>
+  <tr><td class="mono">message</td><td><code>TEXT</code></td><td>Optional user comment. Set to "Restored from v{N}" on restore.</td></tr>
+  <tr><td class="mono">changed_by</td><td><code>UUID → users</code></td><td>Who made this change</td></tr>
+  <tr><td class="mono">changed_at</td><td><code>TIMESTAMPTZ</code></td><td>When the change was made</td></tr>
+</table>
 
-<h3>Order of Operations</h3>
+<div class="callout callout-warn">
+  <strong>Race-condition-free version numbering:</strong> The SQL function <code>next_resource_version(type, id)</code> uses <code>SELECT MAX(version) ... FOR UPDATE</code> within the same transaction as the resource UPDATE. This prevents two concurrent edits from getting the same version number.
+</div>
+
+<h3 id="db-expressions">saved_expressions</h3>
+<p>Named reusable filter expressions scoped to a layer. The expression field stores a compiled DSL tree that is passed directly to <code>compile_expression()</code>.</p>
+<table>
+  <tr><th>Column</th><th>Type</th><th>Purpose</th></tr>
+  <tr><td class="mono">id</td><td><code>UUID PK</code></td><td>Primary key; can be referenced via <code>?expression_id=</code> in feature queries</td></tr>
+  <tr><td class="mono">layer_id</td><td><code>UUID → layers ON DELETE CASCADE</code></td><td>Which layer this expression belongs to; auto-deleted when layer is deleted</td></tr>
+  <tr><td class="mono">name</td><td><code>TEXT NOT NULL</code></td><td>Human-readable name, e.g. "Active Published Features"</td></tr>
+  <tr><td class="mono">description</td><td><code>TEXT</code></td><td>Optional explanation of what the filter does</td></tr>
+  <tr><td class="mono">expression</td><td><code>JSONB NOT NULL</code></td><td>The DSL tree (see Section 5 — Expression DSL)</td></tr>
+  <tr><td class="mono">created_by</td><td><code>UUID → users</code></td><td>Who created the expression</td></tr>
+  <tr><td class="mono">created_at</td><td><code>TIMESTAMPTZ</code></td><td>Creation timestamp</td></tr>
+  <tr><td class="mono">updated_at</td><td><code>TIMESTAMPTZ</code></td><td>Last update timestamp</td></tr>
+</table>
+
+<h3 id="db-features">features (shard DB — geo_features)</h3>
+<p>The actual geometry + attribute data. Lives in a <strong>separate database</strong> (<code>geo_features</code>) accessed via raw <code>text()</code> SQL (no ORM here). The table is hash-partitioned into 32 partitions by <code>layer_id</code> for query performance.</p>
+<table>
+  <tr><th>Column</th><th>Type</th><th>Purpose</th></tr>
+  <tr><td class="mono">id</td><td><code>BIGSERIAL PK</code></td><td>Row ID, stable across soft deletes; synced to Argo as the feature identity</td></tr>
+  <tr><td class="mono">layer_id</td><td><code>UUID NOT NULL</code></td><td>Partition key — <strong>always</strong> include in WHERE clauses or Postgres will scan all 32 partitions</td></tr>
+  <tr><td class="mono">geom</td><td><code>GEOMETRY(Geometry, 4326)</code></td><td>PostGIS geometry in WGS84. Stored via <code>ST_SetSRID(ST_MakeValid(ST_GeomFromGeoJSON(...)), 4326)</code>. Other SRIDs break ArcGIS integration.</td></tr>
+  <tr><td class="mono">properties</td><td><code>JSONB</code></td><td>Attribute key-value pairs; keys must match layer's json_schema fields. Queried with <code>properties->>:field</code> (parameterized, never interpolated).</td></tr>
+  <tr><td class="mono">version</td><td><code>INT DEFAULT 1</code></td><td>Optimistic lock counter. UPDATE uses <code>WHERE version = :expected_version</code> — 0 rows returned → 409 + SyncConflict record.</td></tr>
+  <tr><td class="mono">created_by</td><td><code>TEXT</code></td><td>ms_object_id of creator (text, not UUID — matches ctx.ms_object_id)</td></tr>
+  <tr><td class="mono">updated_by</td><td><code>TEXT</code></td><td>ms_object_id of last editor</td></tr>
+  <tr><td class="mono">created_at</td><td><code>TIMESTAMPTZ</code></td><td>Feature creation timestamp</td></tr>
+  <tr><td class="mono">updated_at</td><td><code>TIMESTAMPTZ</code></td><td>Last edit timestamp</td></tr>
+  <tr><td class="mono">deleted_at</td><td><code>TIMESTAMPTZ</code></td><td>Soft delete. Never hard-delete — ArcGIS Pro and Argo sync track deleted feature IDs for delta sync.</td></tr>
+  <tr><td class="mono">deleted_by</td><td><code>TEXT</code></td><td>ms_object_id of deleter</td></tr>
+</table>
+
+<!-- ======================================================= SECTION 3: PERMISSION SYSTEM -->
+<h2 id="permissions">Section 3 — Permission System</h2>
+
+<h3 id="perm-roles">Role Levels</h3>
+<table>
+  <tr><th>Level</th><th>Name</th><th>What they can do</th></tr>
+  <tr><td><span class="badge badge-viewer">1 — VIEWER</span></td><td>Viewer</td><td>Read features, view styles, download exports (if export permission set), open maps</td></tr>
+  <tr><td><span class="badge badge-editor">2 — EDITOR</span></td><td>Editor</td><td>All of VIEWER + create/edit/delete features, upload styles, use expressions</td></tr>
+  <tr><td><span class="badge badge-manager">3 — MANAGER</span></td><td>Manager</td><td>All of EDITOR + grant VIEWER/EDITOR to others, manage layer schema, lock/unlock layers</td></tr>
+  <tr><td><span class="badge badge-admin">4 — ADMIN</span></td><td>Admin</td><td>All of MANAGER + grant MANAGER/ADMIN, delete maps/layers, manage workspace settings</td></tr>
+  <tr><td><span class="badge badge-super">∞</span></td><td>Superadmin</td><td>Global bypass — all checks return true. Set on the User row, not in resource_permissions.</td></tr>
+</table>
+
+<h3 id="perm-resolution">Resolution Logic</h3>
+<p>When checking if a user can perform an operation on a resource:</p>
+<div class="flow">
+  <div class="flow-step">1. Is user superadmin?<br><em>→ ALLOW</em></div>
+  <div class="flow-arrow">→</div>
+  <div class="flow-step">2. Get user's groups<br><em>(Redis cache, then CTE)</em></div>
+  <div class="flow-arrow">→</div>
+  <div class="flow-step">3. Query resource_permissions<br><em>WHERE resource_id = ? AND<br>(who_user_id = ? OR who_group_id IN (?))</em></div>
+  <div class="flow-arrow">→</div>
+  <div class="flow-step">4. MAX(role_level) wins<br><em>0 rows → DENY</em></div>
+  <div class="flow-arrow">→</div>
+  <div class="flow-step">5. Compare to required level<br><em>VIEWER=1, EDITOR=2, etc.</em></div>
+</div>
+<p>There is no cascade — a workspace permission does NOT automatically grant access to maps or layers inside it. The frontend uses the bulk-grant helper to create individual rows.</p>
+
+<h3 id="perm-embedded">Embedded Map Permission Logic</h3>
+<p>When resolving <code>GET /maps/{id}/open</code> and a group has <code>embedded_map_id</code> set:</p>
 <ol>
-  <li>Create <code>resource_type</code> enum, <code>maps</code>, <code>map_layers</code>, <code>resource_permissions</code>, <code>resource_versions</code> tables</li>
-  <li>Add columns: <code>users.is_superviewer</code>, <code>layers.is_public</code>, <code>layers.created_by</code>, <code>workspaces.created_by</code>, <code>folders.created_by</code></li>
-  <li>Rename <code>geo_databases</code> &rarr; <code>workspaces</code>, <code>group_layers</code> &rarr; <code>folders</code>, FK columns <code>database_id</code> &rarr; <code>workspace_id</code></li>
-  <li>Migrate data from <code>permissions</code> &rarr; <code>resource_permissions</code> (map old role names to integers, map <code>ms_user_id</code> &rarr; <code>users.id</code>, <code>ms_group_id</code> &rarr; <code>ms_groups.id</code>)</li>
-  <li>Migrate <code>layer_owners</code> &rarr; <code>resource_permissions</code> with <code>role_level=4</code> (admin)</li>
-  <li>Drop <code>layers.group_layer_id</code> column</li>
-  <li>Drop old tables: <code>permissions</code>, <code>roles</code>, <code>layer_owners</code></li>
-  <li>Drop old function: <code>can_user_do()</code></li>
-  <li>Create new SQL functions: <code>get_user_group_ids</code>, <code>get_effective_role</code>, <code>get_map_layers_for_user</code></li>
-  <li>Create all indexes</li>
+  <li>Check user has VIEWER+ on the <strong>embedded map</strong> (not the parent map)</li>
+  <li>If no access → node appears as <code>{"type":"embedded_map","access":false,"children":[]}</code></li>
+  <li>If access → recursively resolve the embedded map's tree with the same per-layer permission checks</li>
+  <li>Layer-level permissions inside the embedded map are still checked individually — having viewer on the embedded map is only a gate, not a grant on layers</li>
+  <li>Max embed depth: 5 levels (enforced in <code>map_service._check_embed_cycle()</code>)</li>
 </ol>
 
-<div class="callout callout-warn">
-  <strong>Important:</strong> Steps must run in this order. New tables are created before renames (to avoid FK conflicts), data is migrated before old tables are dropped.
-</div>
-</section>
+<!-- ======================================================= SECTION 4: CHANGE TRACKING -->
+<h2 id="change-tracking">Section 4 — Change Tracking &amp; Freshness</h2>
 
-<!-- ============================================================ -->
-<!-- 7. FILES TO MODIFY -->
-<!-- ============================================================ -->
-<section id="files">
-<h2>7. Files to Modify</h2>
-
-<h3>Backend &mdash; Rewrite</h3>
+<h3 id="change-columns">New Columns on layers (migration 009)</h3>
+<p>The existing <code>updated_at</code> conflates metadata changes (name, schema) with data changes (features edited). These new columns separate the signals:</p>
 <table>
-  <thead><tr><th>File</th><th>Change</th></tr></thead>
-  <tbody>
-    <tr><td><code>api/app/models/permissions.py</code></td><td><code>Permission</code> + <code>Role</code> &rarr; <code>ResourcePermission</code> model</td></tr>
-    <tr><td><code>api/app/models/databases.py</code></td><td><code>GeoDatabase</code> &rarr; <code>Workspace</code></td></tr>
-    <tr><td><code>api/app/models/layers.py</code></td><td><code>GroupLayer</code> &rarr; <code>Folder</code>, update <code>Layer</code> (drop group_layer_id, add is_public/created_by), drop <code>LayerOwner</code></td></tr>
-    <tr><td><code>api/app/auth/permissions.py</code></td><td>New <code>get_effective_role</code>, <code>can_user_do</code>, <code>get_user_group_ids</code></td></tr>
-    <tr><td><code>api/app/auth/models.py</code></td><td>Add <code>is_superviewer</code>, <code>expanded_group_ids</code> to <code>RequestContext</code></td></tr>
-    <tr><td><code>api/app/routers/permissions.py</code></td><td>Rewrite with new grant/revoke/bulk logic</td></tr>
-    <tr><td><code>api/app/routers/databases.py</code></td><td>Rename to <code>routers/workspaces.py</code></td></tr>
-    <tr><td><code>api/app/routers/group_layers.py</code></td><td>Rename to <code>routers/folders.py</code></td></tr>
-    <tr><td><code>api/app/routers/layers.py</code></td><td>Update for new model (no group_layer_id)</td></tr>
-    <tr><td><code>api/app/schemas/permissions.py</code></td><td>New Pydantic schemas</td></tr>
-    <tr><td><code>api/app/main.py</code></td><td>Update router imports</td></tr>
-  </tbody>
+  <tr><th>Column</th><th>Updated when</th><th>Used for</th></tr>
+  <tr><td><code>updated_at</code> (existing)</td><td>Name, description, schema, status, tags changed</td><td>Metadata version list; ArcGIS layer refresh</td></tr>
+  <tr><td><code>updated_by</code> (new)</td><td>Same as updated_at</td><td>Version history attribution ("Alice changed schema")</td></tr>
+  <tr><td><code>features_updated_at</code> (new)</td><td>Any feature mutation (geom OR properties changed, or deleted)</td><td>Map freshness endpoint; Argo delta sync optimization</td></tr>
+  <tr><td><code>features_updated_by</code> (new)</td><td>Same as features_updated_at</td><td>Freshness response ("Bob edited a feature 2h ago")</td></tr>
 </table>
 
-<h3>Backend &mdash; New Files</h3>
-<table>
-  <thead><tr><th>File</th><th>Purpose</th></tr></thead>
-  <tbody>
-    <tr><td><code>api/alembic/versions/007_permission_redesign.py</code></td><td>The migration</td></tr>
-    <tr><td><code>api/app/auth/roles.py</code></td><td><code>RoleLevel</code> IntEnum</td></tr>
-    <tr><td><code>api/app/routers/maps.py</code></td><td>Map CRUD + open + layer management</td></tr>
-    <tr><td><code>api/app/models/maps.py</code></td><td><code>Map</code> and <code>MapLayer</code> ORM models</td></tr>
-    <tr><td><code>api/app/schemas/maps.py</code></td><td>Pydantic schemas for maps</td></tr>
-  </tbody>
-</table>
-
-<h3>Frontend &mdash; Update (later phase)</h3>
-<ul>
-  <li>Replace all <code>database</code> references with <code>workspace</code></li>
-  <li>Replace <code>group_layer</code> references with <code>folder</code></li>
-  <li>Add Map CRUD pages</li>
-  <li>Update permission UI (simplified: no deny, role level picker, bulk grant modal)</li>
-</ul>
-</section>
-
-<!-- ============================================================ -->
-<!-- 8. VERIFICATION -->
-<!-- ============================================================ -->
-<section id="verification">
-<h2>8. Verification</h2>
-
-<h3>Startup</h3>
-<pre><code>docker compose up -d
-cd api && venv\Scripts\alembic -x db=meta upgrade meta@head
-cd api && venv\Scripts\python run.py
-cd web && npm run dev</code></pre>
-
-<h3>Test Scenarios</h3>
-<ul class="check">
-  <li>Create workspace &rarr; creator auto-gets <span class="badge badge-admin">ADMIN</span></li>
-  <li>Create map in workspace &rarr; creator auto-gets <span class="badge badge-admin">ADMIN</span> on map</li>
-  <li>Create layer &rarr; creator auto-gets <span class="badge badge-admin">ADMIN</span> on layer</li>
-  <li>Add layer to map &rarr; layer appears in map</li>
-  <li>Add same layer to second map &rarr; shared layer works</li>
-  <li>Grant user <span class="badge badge-viewer">VIEWER</span> on map &rarr; user sees map but no layers (no layer perms yet)</li>
-  <li>Grant user <span class="badge badge-viewer">VIEWER</span> on specific layers &rarr; user now sees those layers in the map</li>
-  <li>Set layer <code>is_public=true</code> &rarr; all authenticated users see it</li>
-  <li>Bulk grant on folder &rarr; UI creates individual permission rows for selected children</li>
-  <li><span class="badge badge-manager">MANAGER</span> grants viewer/editor &rarr; works. Manager tries to grant admin &rarr; rejected.</li>
-  <li><span class="badge badge-admin">ADMIN</span> grants manager &rarr; works. Admin removes another admin &rarr; works (if not last).</li>
-  <li><span class="badge badge-super">SUPERVIEWER</span> &rarr; sees everything, edits blocked.</li>
-  <li>Group hierarchy: user in child group, permission on parent group &rarr; user has access.</li>
-  <li>Open map &rarr; single API call returns all accessible layers with effective roles.</li>
-</ul>
-</section>
-
-<!-- ============================================================ -->
-<!-- 9. SEARCH ENGINE -->
-<!-- ============================================================ -->
-<section id="search">
-<h2>9. Search Engine (Tags + Full Text)</h2>
-
-<div class="callout">
-  <strong>What exists:</strong> <code>tags TEXT[]</code> with GIN indexes on all tables — but <strong>zero search endpoints</strong>. No <code>tsvector</code> or full-text search anywhere in the codebase. The catalog frontend is ready; the backend is not.
+<h3 id="change-flow">Mutation Flow — What Happens After Every Feature Write</h3>
+<p>All four mutation endpoints (create, update, delete, bulk-delete) call these in order after commit, all fire-and-forget:</p>
+<div class="flow">
+  <div class="flow-step">Feature write<br><em>committed to DB</em></div>
+  <div class="flow-arrow">→</div>
+  <div class="flow-step"><code>refresh_layer_geometry_types()</code><br><em>(only if geom changed)</em></div>
+  <div class="flow-arrow">→</div>
+  <div class="flow-step"><code>refresh_layer_bbox()</code><br><em>(only if geom changed)</em></div>
+  <div class="flow-arrow">→</div>
+  <div class="flow-step"><code>refresh_layer_feature_stamp()</code><br><em>(always — even for properties-only edits)</em></div>
+  <div class="flow-arrow">→</div>
+  <div class="flow-step"><code>refresh_map_content_for_layer()</code><br><em>(asyncio.create_task — background)</em></div>
 </div>
 
-<h3 id="search-db">DB Changes <span style="color:var(--text-muted);font-weight:400;font-size:14px">(migration 008_search_and_stats.py)</span></h3>
-<p>Add a <code>GENERATED ALWAYS AS … STORED</code> tsvector column to every resource table. Uses the <code>simple</code> dictionary (no stemming — correct for place names and GIS layer names).</p>
-
-<pre><code><span class="cm">-- Add generated full-text search columns</span>
-<span class="kw">ALTER TABLE</span> workspaces <span class="kw">ADD COLUMN</span> search_vector <span class="ty">tsvector</span>
-    <span class="kw">GENERATED ALWAYS AS</span> (
-        <span class="fn">to_tsvector</span>(<span class="str">'simple'</span>, <span class="fn">coalesce</span>(name,<span class="str">''</span>) || <span class="str">' '</span> || <span class="fn">coalesce</span>(description,<span class="str">''</span>))
-    ) <span class="kw">STORED</span>;
-
-<span class="kw">ALTER TABLE</span> folders <span class="kw">ADD COLUMN</span> search_vector <span class="ty">tsvector</span>
-    <span class="kw">GENERATED ALWAYS AS</span> (
-        <span class="fn">to_tsvector</span>(<span class="str">'simple'</span>, <span class="fn">coalesce</span>(name,<span class="str">''</span>) || <span class="str">' '</span> || <span class="fn">coalesce</span>(description,<span class="str">''</span>))
-    ) <span class="kw">STORED</span>;
-
-<span class="kw">ALTER TABLE</span> maps <span class="kw">ADD COLUMN</span> search_vector <span class="ty">tsvector</span>
-    <span class="kw">GENERATED ALWAYS AS</span> (
-        <span class="fn">to_tsvector</span>(<span class="str">'simple'</span>, <span class="fn">coalesce</span>(name,<span class="str">''</span>) || <span class="str">' '</span> || <span class="fn">coalesce</span>(description,<span class="str">''</span>))
-    ) <span class="kw">STORED</span>;
-
-<span class="kw">ALTER TABLE</span> layers <span class="kw">ADD COLUMN</span> search_vector <span class="ty">tsvector</span>
-    <span class="kw">GENERATED ALWAYS AS</span> (
-        <span class="fn">to_tsvector</span>(<span class="str">'simple'</span>, <span class="fn">coalesce</span>(name,<span class="str">''</span>) || <span class="str">' '</span> || <span class="fn">coalesce</span>(description,<span class="str">''</span>))
-    ) <span class="kw">STORED</span>;
-
-<span class="kw">CREATE INDEX</span> workspaces_search_idx <span class="kw">ON</span> workspaces <span class="kw">USING</span> <span class="fn">GIN</span>(search_vector);
-<span class="kw">CREATE INDEX</span> folders_search_idx    <span class="kw">ON</span> folders    <span class="kw">USING</span> <span class="fn">GIN</span>(search_vector);
-<span class="kw">CREATE INDEX</span> maps_search_idx       <span class="kw">ON</span> maps       <span class="kw">USING</span> <span class="fn">GIN</span>(search_vector);
-<span class="kw">CREATE INDEX</span> layers_search_idx     <span class="kw">ON</span> layers     <span class="kw">USING</span> <span class="fn">GIN</span>(search_vector);</code></pre>
-
-<div class="callout">
-  <strong>Note:</strong> Tags GIN indexes already exist on all tables. No new tag indexes needed.
+<div class="callout callout-error">
+  <strong>Bug in current code (features.py:206):</strong> <code>update_feature()</code> only calls <code>refresh_layer_geometry_types()</code> when <code>body.geom is not None</code>. A properties-only edit (changing a field value but not the geometry) produces zero change signal — <code>features_updated_at</code> is not updated, maps don't know the layer changed. The fix is to call <code>refresh_layer_feature_stamp()</code> unconditionally on every mutation.
 </div>
 
-<h3>Search SQL Function</h3>
-<pre><code><span class="kw">CREATE OR REPLACE FUNCTION</span> <span class="fn">search_resources</span>(
-    p_user_id    <span class="ty">UUID</span>,
-    p_group_ids  <span class="ty">UUID[]</span>,
-    p_query      <span class="ty">TEXT</span>,        <span class="cm">-- NULL = no text filter</span>
-    p_tags       <span class="ty">TEXT[]</span>,      <span class="cm">-- NULL = no tag filter; uses && (overlap, not subset)</span>
-    p_types      <span class="ty">TEXT[]</span>,      <span class="cm">-- NULL = all types</span>
-    p_workspace_id <span class="ty">UUID</span>,      <span class="cm">-- NULL = all workspaces</span>
-    p_limit      <span class="ty">INT</span> <span class="kw">DEFAULT</span> <span class="num">20</span>,
-    p_offset     <span class="ty">INT</span> <span class="kw">DEFAULT</span> <span class="num">0</span>
-) <span class="kw">RETURNS TABLE</span> (
-    resource_type <span class="ty">TEXT</span>, resource_id <span class="ty">UUID</span>,
-    name <span class="ty">TEXT</span>, description <span class="ty">TEXT</span>, tags <span class="ty">TEXT[]</span>,
-    workspace_id <span class="ty">UUID</span>, workspace_name <span class="ty">TEXT</span>,
-    rank <span class="ty">FLOAT4</span>
-) <span class="kw">AS</span> $$
-<span class="cm">-- UNION ALL across workspaces, folders, maps, layers</span>
-<span class="cm">-- Each branch applies:</span>
-<span class="cm">--   1. Text: p_query IS NULL OR search_vector @@ plainto_tsquery('simple', p_query)</span>
-<span class="cm">--   2. Tags:  p_tags  IS NULL OR tags && p_tags</span>
-<span class="cm">--   3. Type:  p_types IS NULL OR 'layer' = ANY(p_types)</span>
-<span class="cm">--   4. Perms: user has role on resource OR is_public = TRUE (maps/layers only)</span>
-<span class="cm">-- ORDER BY ts_rank(search_vector, query) DESC when q is set, else updated_at DESC</span>
-$$ <span class="kw">LANGUAGE</span> sql <span class="kw">STABLE</span>;</code></pre>
-
-<h3 id="search-api">API Endpoint</h3>
-<pre><code>GET /search?q=roads&tags=infrastructure,city&type=layer,map&workspace_id=X&limit=20&offset=0</code></pre>
-
-<table>
-  <thead><tr><th>Param</th><th>Description</th></tr></thead>
-  <tbody>
-    <tr><td><code>q</code></td><td>Free text (matches name + description via <code>tsvector</code>)</td></tr>
-    <tr><td><code>tags</code></td><td>Comma-separated. Returns resources that have <strong>any</strong> of these tags (overlap)</td></tr>
-    <tr><td><code>type</code></td><td>Comma-separated filter: <code>workspace</code>, <code>folder</code>, <code>map</code>, <code>layer</code></td></tr>
-    <tr><td><code>workspace_id</code></td><td>Scope results to a single workspace</td></tr>
-    <tr><td><code>limit</code> / <code>offset</code></td><td>Pagination — default 20, max 100</td></tr>
-  </tbody>
-</table>
-
-<p><strong>Response:</strong></p>
+<h3 id="change-freshness">Freshness Endpoint</h3>
+<p><code>GET /maps/{id}/freshness?since=&lt;ISO-timestamp&gt;</code> — answers "has anything in this map changed since X?"</p>
 <pre><code>{
-  <span class="str">"total"</span>: <span class="num">42</span>,
-  <span class="str">"results"</span>: [
+  <span class="str">"map_id"</span>: <span class="str">"..."</span>,
+  <span class="str">"content_version"</span>: <span class="num">12</span>,
+  <span class="str">"content_updated_at"</span>: <span class="str">"2025-01-15T10:30:00Z"</span>,
+  <span class="str">"any_change_since"</span>: <span class="kw">true</span>,
+  <span class="str">"changed_layers"</span>: [
     {
-      <span class="str">"resource_type"</span>: <span class="str">"layer"</span>,
-      <span class="str">"resource_id"</span>: <span class="str">"uuid"</span>,
+      <span class="str">"layer_id"</span>: <span class="str">"..."</span>,
       <span class="str">"name"</span>: <span class="str">"Roads"</span>,
-      <span class="str">"description"</span>: <span class="str">"City road network"</span>,
-      <span class="str">"tags"</span>: [<span class="str">"infrastructure"</span>, <span class="str">"transport"</span>],
-      <span class="str">"workspace_id"</span>: <span class="str">"uuid"</span>,
-      <span class="str">"workspace_name"</span>: <span class="str">"City Planning"</span>,
-      <span class="str">"rank"</span>: <span class="num">0.85</span>
+      <span class="str">"features_updated_at"</span>: <span class="str">"2025-01-15T09:00:00Z"</span>,
+      <span class="str">"features_updated_by"</span>: { <span class="str">"id"</span>: <span class="str">"..."</span>, <span class="str">"name"</span>: <span class="str">"Bob Cohen"</span> },
+      <span class="str">"metadata_updated_at"</span>: <span class="str">"2025-01-14T12:00:00Z"</span>,
+      <span class="str">"metadata_updated_by"</span>: { <span class="str">"id"</span>: <span class="str">"..."</span>, <span class="str">"name"</span>: <span class="str">"Alice Levi"</span> }
+    }
+  ]
+}</code></pre>
+<p>The response is cached in Redis (<code>mapfresh:{map_id}</code>, 30s TTL). Invalidated when any feature mutation fires <code>refresh_map_content_for_layer()</code>.</p>
+
+<p><strong>ETag on <code>GET /maps/{id}/open</code>:</strong> Built from <code>"{map_id}-{content_version}-{unix_ts_of_max_features_updated_at}"</code>. Clients send <code>If-None-Match</code> → 304 if nothing changed. Eliminates full tree assembly + permission resolution on repeat opens.</p>
+
+<!-- ======================================================= SECTION 5: EXPRESSION DSL -->
+<h2 id="dsl">Section 5 — Expression DSL</h2>
+
+<h3 id="dsl-structure">DSL Structure</h3>
+<p>Expressions are JSON trees with two node types: <strong>boolean combinators</strong> (AND/OR) and <strong>leaf conditions</strong>.</p>
+
+<pre><code><span class="cm">// Leaf condition — simplest form</span>
+{ <span class="str">"field"</span>: <span class="str">"status"</span>, <span class="str">"op"</span>: <span class="str">"eq"</span>, <span class="str">"value"</span>: <span class="str">"active"</span> }
+
+<span class="cm">// Boolean combinator — nested AND/OR</span>
+{
+  <span class="str">"op"</span>: <span class="str">"AND"</span>,
+  <span class="str">"conditions"</span>: [
+    { <span class="str">"field"</span>: <span class="str">"status"</span>, <span class="str">"op"</span>: <span class="str">"eq"</span>, <span class="str">"value"</span>: <span class="str">"active"</span> },
+    {
+      <span class="str">"op"</span>: <span class="str">"OR"</span>,
+      <span class="str">"conditions"</span>: [
+        { <span class="str">"field"</span>: <span class="str">"population"</span>, <span class="str">"op"</span>: <span class="str">"gt"</span>, <span class="str">"value"</span>: <span class="num">1000</span> },
+        { <span class="str">"field"</span>: <span class="str">"area_km2"</span>, <span class="str">"op"</span>: <span class="str">"between"</span>, <span class="str">"lo"</span>: <span class="num">10</span>, <span class="str">"hi"</span>: <span class="num">100</span> }
+      ]
     }
   ]
 }</code></pre>
 
+<h3 id="dsl-ops">Supported Leaf Operators</h3>
+<table>
+  <tr><th>op</th><th>SQL generated</th><th>Notes</th></tr>
+  <tr><td><code>eq</code></td><td><code>properties-&gt;&gt;:f = :v</code></td><td>String equality</td></tr>
+  <tr><td><code>ne</code></td><td><code>properties-&gt;&gt;:f &lt;&gt; :v</code></td><td>Not equal</td></tr>
+  <tr><td><code>gt / gte / lt / lte</code></td><td><code>(properties-&gt;&gt;:f)::numeric &gt; :v</code></td><td>Numeric comparison; value cast to numeric</td></tr>
+  <tr><td><code>between</code></td><td><code>(properties-&gt;&gt;:f)::numeric BETWEEN :lo AND :hi</code></td><td>Requires <code>lo</code> + <code>hi</code> keys instead of <code>value</code></td></tr>
+  <tr><td><code>contains</code></td><td><code>properties-&gt;&gt;:f ILIKE :v</code></td><td>Value auto-wrapped in %…%</td></tr>
+  <tr><td><code>starts_with</code></td><td><code>properties-&gt;&gt;:f ILIKE :v</code></td><td>Value gets % suffix</td></tr>
+  <tr><td><code>ends_with</code></td><td><code>properties-&gt;&gt;:f ILIKE :v</code></td><td>Value gets % prefix</td></tr>
+  <tr><td><code>in</code></td><td><code>properties-&gt;&gt;:f = ANY(ARRAY[...])</code></td><td>Value must be array</td></tr>
+  <tr><td><code>not_in</code></td><td><code>properties-&gt;&gt;:f &lt;&gt; ALL(ARRAY[...])</code></td><td>Value must be array</td></tr>
+  <tr><td><code>is_null</code></td><td><code>properties-&gt;&gt;:f IS NULL</code></td><td>No <code>value</code> key needed</td></tr>
+  <tr><td><code>is_not_null</code></td><td><code>properties-&gt;&gt;:f IS NOT NULL</code></td><td>No <code>value</code> key needed</td></tr>
+</table>
+
+<h3 id="dsl-security">Security Model</h3>
+<p>The <code>compile_expression()</code> function in <code>services/feature_filter.py</code> is the sole entry point. It enforces:</p>
 <ul>
-  <li>Only returns resources the user has any permission on (or <code>is_public</code> for maps/layers)</li>
-  <li>Superadmin/superviewer see everything</li>
-  <li><code>q</code> and <code>tags</code> are combined with AND logic — both must match</li>
-  <li>When <code>q</code> is set, results are ranked by <code>ts_rank</code>. Otherwise ordered by <code>updated_at DESC</code></li>
+  <li><strong>No string interpolation:</strong> Field names go as <em>values</em> to <code>properties-&gt;&gt;:f_N</code>, never into the SQL string itself. All values go through the named params dict.</li>
+  <li><strong>Allowlist ops:</strong> Any <code>op</code> not in the frozen set → immediate <code>ValueError</code> → 400 response. Unknown ops like <code>"raw_sql"</code> are rejected.</li>
+  <li><strong>Schema validation:</strong> Field names are validated against the layer's <code>json_schema.fields</code> set. An unknown field → 400. This is the primary injection surface — it's eliminated by using params, not format strings.</li>
+  <li><strong>Depth limit:</strong> Max 10 levels of nesting; max 50 total conditions. Protects against stack overflow.</li>
 </ul>
 
-<p><strong>New file:</strong> <code>api/app/routers/search.py</code></p>
-</section>
+<!-- ======================================================= SECTION 6: API ENDPOINTS -->
+<h2 id="api">Section 6 — API Endpoints</h2>
 
-<!-- ============================================================ -->
-<!-- 10. AUDIT LOGS -->
-<!-- ============================================================ -->
-<section id="audit">
-<h2>10. Audit Logs</h2>
+<p>All endpoints are under <code>http://localhost:8000</code>. Authentication via <code>Authorization: Bearer {token}</code> header (or DEV_MODE bypasses this). Superadmin bypasses all permission checks.</p>
 
-<div class="callout callout-warn">
-  <strong>What exists but isn't wired:</strong>
-  <ul style="margin-top:8px">
-    <li><code>audit_log</code> table — fully designed with correct columns and indexes</li>
-    <li><code>audit_service.log()</code> in <code>api/app/services/audit_service.py</code> — implemented, fire-and-forget, <strong>never called anywhere</strong></li>
-    <li><code>AuditLogPage.tsx</code> frontend — calls <code>GET /audit</code> which <strong>does not exist</strong></li>
-  </ul>
+<h3 id="api-auth">Auth</h3>
+<div class="card">
+  <div class="endpoint-row"><span class="endpoint-method"><span class="badge badge-post">POST</span></span><span class="endpoint-path">/auth/login</span><span class="endpoint-desc">Email → JWT token (30-day HS256)</span></div>
+  <div class="endpoint-row"><span class="endpoint-method"><span class="badge badge-get">GET</span></span><span class="endpoint-path">/auth/auto-login</span><span class="endpoint-desc">OS %USERNAME% → token (DEV_MODE only)</span></div>
+  <div class="endpoint-row"><span class="endpoint-method"><span class="badge badge-get">GET</span></span><span class="endpoint-path">/auth/me</span><span class="endpoint-desc">Current user from token</span></div>
 </div>
 
-<h3 id="audit-wire">Wire <code>audit_service.log()</code> into Routers</h3>
+<h3 id="api-workspaces">Workspaces &amp; Folders</h3>
+<div class="card">
+  <div class="endpoint-row"><span class="endpoint-method"><span class="badge badge-get">GET</span></span><span class="endpoint-path">/workspaces</span><span class="endpoint-desc">List workspaces user can see (VIEWER+)</span></div>
+  <div class="endpoint-row"><span class="endpoint-method"><span class="badge badge-post">POST</span></span><span class="endpoint-path">/workspaces</span><span class="endpoint-desc">Create workspace (superadmin only)</span></div>
+  <div class="endpoint-row"><span class="endpoint-method"><span class="badge badge-put">PUT</span></span><span class="endpoint-path">/workspaces/{id}</span><span class="endpoint-desc">Update name/description (ADMIN on workspace)</span></div>
+  <div class="endpoint-row"><span class="endpoint-method"><span class="badge badge-delete">DELETE</span></span><span class="endpoint-path">/workspaces/{id}</span><span class="endpoint-desc">Soft delete (superadmin)</span></div>
+  <div class="endpoint-row"><span class="endpoint-method"><span class="badge badge-get">GET</span></span><span class="endpoint-path">/workspaces/{id}/folders</span><span class="endpoint-desc">Full folder tree for workspace</span></div>
+  <div class="endpoint-row"><span class="endpoint-method"><span class="badge badge-post">POST</span></span><span class="endpoint-path">/workspaces/{id}/folders</span><span class="endpoint-desc">Create folder {name, parent_id?, sort_order?} (MANAGER+)</span></div>
+  <div class="endpoint-row"><span class="endpoint-method"><span class="badge badge-put">PUT</span></span><span class="endpoint-path">/folders/{id}</span><span class="endpoint-desc">Rename / reparent / reorder folder (MANAGER+)</span></div>
+  <div class="endpoint-row"><span class="endpoint-method"><span class="badge badge-delete">DELETE</span></span><span class="endpoint-path">/folders/{id}</span><span class="endpoint-desc">Delete folder; maps inside move to folder_id=NULL (MANAGER+)</span></div>
+</div>
+
+<h3 id="api-maps">Maps</h3>
+<div class="card">
+  <div class="endpoint-row"><span class="endpoint-method"><span class="badge badge-get">GET</span></span><span class="endpoint-path">/maps?workspace_id=&amp;folder_id=</span><span class="endpoint-desc">List maps visible to user (VIEWER+)</span></div>
+  <div class="endpoint-row"><span class="endpoint-method"><span class="badge badge-post">POST</span></span><span class="endpoint-path">/maps</span><span class="endpoint-desc">Create map {name, workspace_id, folder_id?} → creator auto-gets ADMIN</span></div>
+  <div class="endpoint-row"><span class="endpoint-method"><span class="badge badge-get">GET</span></span><span class="endpoint-path">/maps/{id}</span><span class="endpoint-desc">Get map metadata</span></div>
+  <div class="endpoint-row"><span class="endpoint-method"><span class="badge badge-put">PUT</span></span><span class="endpoint-path">/maps/{id}</span><span class="endpoint-desc">Update name/description → records version (MANAGER+)</span></div>
+  <div class="endpoint-row"><span class="endpoint-method"><span class="badge badge-delete">DELETE</span></span><span class="endpoint-path">/maps/{id}</span><span class="endpoint-desc">Soft delete (ADMIN)</span></div>
+  <div class="endpoint-row"><span class="endpoint-method"><span class="badge badge-get">GET</span></span><span class="endpoint-path">/maps/{id}/open</span><span class="endpoint-desc">Full group+layer tree + effective role per layer. Supports ETag / If-None-Match → 304. Response cached in Redis maptree:{id}.</span></div>
+  <div class="endpoint-row"><span class="endpoint-method"><span class="badge badge-get">GET</span></span><span class="endpoint-path">/maps/{id}/freshness?since=</span><span class="endpoint-desc">Which layers changed since timestamp; content_version; who changed what. 30s Redis cache.</span></div>
+</div>
+
+<h3 id="api-map-groups">Map Groups &amp; Layers Inside Maps</h3>
+<div class="card">
+  <div class="endpoint-row"><span class="endpoint-method"><span class="badge badge-post">POST</span></span><span class="endpoint-path">/maps/{id}/groups</span><span class="endpoint-desc">{name, parent_id?, sort_order?, embedded_map_id?} — create group or embed a map (EDITOR+)</span></div>
+  <div class="endpoint-row"><span class="endpoint-method"><span class="badge badge-put">PUT</span></span><span class="endpoint-path">/maps/{id}/groups/{gid}</span><span class="endpoint-desc">Rename / reparent / reorder group (EDITOR+)</span></div>
+  <div class="endpoint-row"><span class="endpoint-method"><span class="badge badge-delete">DELETE</span></span><span class="endpoint-path">/maps/{id}/groups/{gid}</span><span class="endpoint-desc">Delete group; layers float to root of map (EDITOR+)</span></div>
+  <div class="endpoint-row"><span class="endpoint-method"><span class="badge badge-post">POST</span></span><span class="endpoint-path">/maps/{id}/layers</span><span class="endpoint-desc">{layer_id, group_id?, sort_order?, filter_expression?} — add layer to map (EDITOR+)</span></div>
+  <div class="endpoint-row"><span class="endpoint-method"><span class="badge badge-put">PUT</span></span><span class="endpoint-path">/maps/{id}/layers/{layer_id}</span><span class="endpoint-desc">Update visibility, sort_order, group_id, filter_expression (EDITOR+)</span></div>
+  <div class="endpoint-row"><span class="endpoint-method"><span class="badge badge-delete">DELETE</span></span><span class="endpoint-path">/maps/{id}/layers/{layer_id}</span><span class="endpoint-desc">Remove layer from map (EDITOR+)</span></div>
+  <div class="endpoint-row"><span class="endpoint-method"><span class="badge badge-post">POST</span></span><span class="endpoint-path">/maps/{id}/groups/{gid}/permissions</span><span class="endpoint-desc">Bulk-grant: expands group recursively → creates resource_permission rows for each layer. Body: {who_user_id|who_group_id, role_level}. Response: {granted: N, layer_ids: [...]}. (MANAGER+)</span></div>
+</div>
+
+<h3 id="api-features">Features (inside layers)</h3>
+<div class="card">
+  <div class="endpoint-row"><span class="endpoint-method"><span class="badge badge-get">GET</span></span><span class="endpoint-path">/layers/{id}/features</span><span class="endpoint-desc">List features. Full query params below.</span></div>
+  <div class="endpoint-row"><span class="endpoint-method"><span class="badge badge-post">POST</span></span><span class="endpoint-path">/layers/{id}/features</span><span class="endpoint-desc">Create feature {geom, properties} (EDITOR+)</span></div>
+  <div class="endpoint-row"><span class="endpoint-method"><span class="badge badge-get">GET</span></span><span class="endpoint-path">/layers/{id}/features/{fid}</span><span class="endpoint-desc">Get single feature (VIEWER+)</span></div>
+  <div class="endpoint-row"><span class="endpoint-method"><span class="badge badge-put">PUT</span></span><span class="endpoint-path">/layers/{id}/features/{fid}</span><span class="endpoint-desc">Update {geom?, properties?, version} — optimistic lock (EDITOR+)</span></div>
+  <div class="endpoint-row"><span class="endpoint-method"><span class="badge badge-delete">DELETE</span></span><span class="endpoint-path">/layers/{id}/features/{fid}</span><span class="endpoint-desc">Soft delete (EDITOR+)</span></div>
+  <div class="endpoint-row"><span class="endpoint-method"><span class="badge badge-post">POST</span></span><span class="endpoint-path">/layers/{id}/features/bulk-delete</span><span class="endpoint-desc">Delete multiple features by ID list (EDITOR+)</span></div>
+</div>
+
+<h4>Feature List Query Params (<code>GET /layers/{id}/features</code>)</h4>
 <table>
-  <thead><tr><th>Router</th><th>Actions to log</th></tr></thead>
-  <tbody>
-    <tr><td><code>workspaces.py</code></td><td>create, update, delete</td></tr>
-    <tr><td><code>folders.py</code></td><td>create, update, delete, move</td></tr>
-    <tr><td><code>maps.py</code></td><td>create, update, delete</td></tr>
-    <tr><td><code>layers.py</code></td><td>create, update, delete, lock, unlock</td></tr>
-    <tr><td><code>permissions.py</code></td><td>grant, revoke</td></tr>
-    <tr><td><code>users.py</code></td><td>activate, deactivate, make_superadmin, make_superviewer</td></tr>
-  </tbody>
+  <tr><th>Param</th><th>Type</th><th>Effect</th></tr>
+  <tr><td><code>limit, offset</code></td><td>int</td><td>Pagination</td></tr>
+  <tr><td><code>min_lon, min_lat, max_lon, max_lat</code></td><td>float</td><td>Bounding box filter (all four required)</td></tr>
+  <tr><td><code>geometry_type</code></td><td>string</td><td>Filter by geometry type (POINT, LINESTRING, POLYGON…)</td></tr>
+  <tr><td><code>spatial_op</code></td><td>string</td><td>intersects / within / contains / dwithin — requires filter_geojson</td></tr>
+  <tr><td><code>filter_geojson</code></td><td>GeoJSON string</td><td>Geometry to use as spatial predicate reference shape</td></tr>
+  <tr><td><code>filter_distance_m</code></td><td>float</td><td>Distance in meters for dwithin only</td></tr>
+  <tr><td><code>expression_id</code></td><td>UUID</td><td>Use a saved named expression (cached in Redis)</td></tr>
+  <tr><td><code>expression</code></td><td>JSON string</td><td>Inline DSL expression (parsed and compiled at query time)</td></tr>
+  <tr><td><code>attr_filter</code></td><td>JSON string</td><td>Legacy simple filter: <code>[{"field":"x","op":"eq","value":"y"}]</code></td></tr>
+  <tr><td><code>zoom</code></td><td>int 0–22</td><td>Geometry simplification — applies ST_SimplifyPreserveTopology with tolerance derived from zoom level. Applied for zoom &lt; 14.</td></tr>
+  <tr><td><code>srid</code></td><td>int</td><td>Target EPSG code for reprojection. Validated against spatial_ref_sys at startup (in-process frozenset). Applies ST_Transform before returning.</td></tr>
 </table>
 
-<p>Log <code>old_value</code> / <code>new_value</code> as snapshots of changed fields only (not full object):</p>
-<pre><code><span class="cm"># Example: update layer name</span>
-<span class="kw">await</span> audit_service.log(db, ctx,
-    action=<span class="str">"layer.update"</span>,
-    resource_type=<span class="str">"layer"</span>,
-    resource_id=str(layer.id),
-    old_value={<span class="str">"name"</span>: old_name},
-    new_value={<span class="str">"name"</span>: new_name},
-)
+<h3 id="api-layers">Layers (metadata &amp; schema)</h3>
+<div class="card">
+  <div class="endpoint-row"><span class="endpoint-method"><span class="badge badge-get">GET</span></span><span class="endpoint-path">/layers?database_id=</span><span class="endpoint-desc">List layers visible to user</span></div>
+  <div class="endpoint-row"><span class="endpoint-method"><span class="badge badge-post">POST</span></span><span class="endpoint-path">/layers</span><span class="endpoint-desc">Create layer (EDITOR+ on database)</span></div>
+  <div class="endpoint-row"><span class="endpoint-method"><span class="badge badge-get">GET</span></span><span class="endpoint-path">/layers/{id}</span><span class="endpoint-desc">Get layer metadata including bbox as [lon_min,lat_min,lon_max,lat_max]</span></div>
+  <div class="endpoint-row"><span class="endpoint-method"><span class="badge badge-put">PUT</span></span><span class="endpoint-path">/layers/{id}</span><span class="endpoint-desc">Update metadata → records version snapshot (EDITOR+)</span></div>
+  <div class="endpoint-row"><span class="endpoint-method"><span class="badge badge-delete">DELETE</span></span><span class="endpoint-path">/layers/{id}</span><span class="endpoint-desc">Soft delete (MANAGER+)</span></div>
+  <div class="endpoint-row"><span class="endpoint-method"><span class="badge badge-get">GET</span></span><span class="endpoint-path">/layers/{id}/schema</span><span class="endpoint-desc">Get json_schema field definitions</span></div>
+  <div class="endpoint-row"><span class="endpoint-method"><span class="badge badge-put">PUT</span></span><span class="endpoint-path">/layers/{id}/schema</span><span class="endpoint-desc">Update field definitions (MANAGER+)</span></div>
+  <div class="endpoint-row"><span class="endpoint-method"><span class="badge badge-post">POST</span></span><span class="endpoint-path">/layers/{id}/lock</span><span class="endpoint-desc">{reason} — lock layer (MANAGER+)</span></div>
+  <div class="endpoint-row"><span class="endpoint-method"><span class="badge badge-delete">DELETE</span></span><span class="endpoint-path">/layers/{id}/lock</span><span class="endpoint-desc">Unlock layer (MANAGER+)</span></div>
+</div>
 
-<span class="cm"># Example: grant permission</span>
-<span class="kw">await</span> audit_service.log(db, ctx,
-    action=<span class="str">"permission.grant"</span>,
-    resource_type=<span class="str">"layer"</span>,
-    resource_id=str(layer_id),
-    new_value={<span class="str">"principal"</span>: f<span class="str">"user:{user_id}"</span>, <span class="str">"role_level"</span>: <span class="num">2</span>},
-)</code></pre>
+<h3 id="api-export">Export</h3>
+<div class="card">
+  <div class="endpoint-row"><span class="endpoint-method"><span class="badge badge-get">GET</span></span><span class="endpoint-path">/layers/{id}/export?format=geojson|shapefile|gpkg&amp;srid=</span><span class="endpoint-desc">Download all features. Returns StreamingResponse (GeoJSON) or binary (SHP zip / GPKG). Content-Disposition: attachment. (VIEWER+ with can_export)</span></div>
+</div>
+<p>Format details: GeoJSON uses Python streaming. Shapefile uses <code>pyshp</code> (pure Python, zip of .shp/.dbf/.prj/.shx). GeoPackage uses <code>fiona</code> with GPKG driver. Both sync libs run via <code>asyncio.to_thread()</code>.</p>
 
-<h3 id="audit-endpoint">New Endpoint: <code>GET /audit</code></h3>
-<p><strong>New file:</strong> <code>api/app/routers/audit.py</code></p>
-
-<pre><code>GET /audit?resource_type=layer&resource_id=X&action=permission.grant
-          &user_id=Y&from=2026-01-01&to=2026-04-24&limit=50&offset=0</code></pre>
-
-<table>
-  <thead><tr><th>Role</th><th>What they see</th></tr></thead>
-  <tbody>
-    <tr><td><span class="badge badge-super">superadmin</span></td><td>All audit entries system-wide</td></tr>
-    <tr><td><span class="badge badge-admin">admin</span> on resource</td><td>Entries for that specific resource only</td></tr>
-    <tr><td>Others</td><td>403</td></tr>
-  </tbody>
-</table>
-
-<p><strong>Response:</strong></p>
+<h3 id="api-stats">Attribute Statistics</h3>
+<div class="card">
+  <div class="endpoint-row"><span class="endpoint-method"><span class="badge badge-get">GET</span></span><span class="endpoint-path">/layers/{id}/stats</span><span class="endpoint-desc">Feature count, geometry type breakdown, bbox, per-field stats. Cached in Redis 60s. (VIEWER+)</span></div>
+</div>
 <pre><code>{
-  <span class="str">"total"</span>: <span class="num">234</span>,
-  <span class="str">"entries"</span>: [
-    {
-      <span class="str">"id"</span>: <span class="num">1001</span>,
-      <span class="str">"user_email"</span>: <span class="str">"jane@org.com"</span>,
-      <span class="str">"action"</span>: <span class="str">"permission.grant"</span>,
-      <span class="str">"resource_type"</span>: <span class="str">"layer"</span>,
-      <span class="str">"resource_id"</span>: <span class="str">"uuid"</span>,
-      <span class="str">"old_value"</span>: <span class="kw">null</span>,
-      <span class="str">"new_value"</span>: { <span class="str">"principal"</span>: <span class="str">"group:ops-team"</span>, <span class="str">"role_level"</span>: <span class="num">2</span> },
-      <span class="str">"ip_address"</span>: <span class="str">"10.0.0.1"</span>,
-      <span class="str">"created_at"</span>: <span class="str">"2026-04-24T09:00:00Z"</span>
-    }
-  ]
+  <span class="str">"layer_id"</span>: <span class="str">"..."</span>,
+  <span class="str">"total_count"</span>: <span class="num">1042</span>,
+  <span class="str">"geometry_type_counts"</span>: { <span class="str">"POINT"</span>: <span class="num">800</span>, <span class="str">"LINESTRING"</span>: <span class="num">242</span> },
+  <span class="str">"bbox"</span>: [<span class="num">34.2</span>, <span class="num">29.5</span>, <span class="num">35.9</span>, <span class="num">33.4</span>],
+  <span class="str">"field_stats"</span>: {
+    <span class="str">"status"</span>: { <span class="str">"type"</span>: <span class="str">"string"</span>, <span class="str">"null_count"</span>: <span class="num">12</span>, <span class="str">"unique_count"</span>: <span class="num">3</span>,
+                 <span class="str">"top_values"</span>: [{ <span class="str">"value"</span>: <span class="str">"active"</span>, <span class="str">"count"</span>: <span class="num">700</span> }] },
+    <span class="str">"population"</span>: { <span class="str">"type"</span>: <span class="str">"number"</span>, <span class="str">"min"</span>: <span class="num">100</span>, <span class="str">"max"</span>: <span class="num">50000</span>, <span class="str">"avg"</span>: <span class="num">4200.5</span>, <span class="str">"null_count"</span>: <span class="num">5</span> }
+  }
 }</code></pre>
-</section>
 
-<!-- ============================================================ -->
-<!-- 11. PERMISSION AUDIT REPORT -->
-<!-- ============================================================ -->
-<section id="perm-audit">
-<h2>11. Permission Audit Report</h2>
+<h3 id="api-versions">Version History</h3>
+<div class="card">
+  <div class="endpoint-row"><span class="endpoint-method"><span class="badge badge-get">GET</span></span><span class="endpoint-path">/layers/{id}/versions?limit=50&amp;offset=0</span><span class="endpoint-desc">List versions DESC. Each item: {version, changed_fields, changed_by.name, changed_at, message}.</span></div>
+  <div class="endpoint-row"><span class="endpoint-method"><span class="badge badge-get">GET</span></span><span class="endpoint-path">/layers/{id}/versions/{v}</span><span class="endpoint-desc">Get full snapshot at version v</span></div>
+  <div class="endpoint-row"><span class="endpoint-method"><span class="badge badge-post">POST</span></span><span class="endpoint-path">/layers/{id}/versions/{v}/restore</span><span class="endpoint-desc">Restore layer metadata to snapshot; records new version with message "Restored from v{v}" (EDITOR+)</span></div>
+  <div class="endpoint-row"><span class="endpoint-method"><span class="badge badge-get">GET</span></span><span class="endpoint-path">/maps/{id}/versions?limit=50</span><span class="endpoint-desc">Same pattern for maps</span></div>
+  <div class="endpoint-row"><span class="endpoint-method"><span class="badge badge-get">GET</span></span><span class="endpoint-path">/maps/{id}/versions/{v}</span><span class="endpoint-desc">Map snapshot at version v</span></div>
+  <div class="endpoint-row"><span class="endpoint-method"><span class="badge badge-post">POST</span></span><span class="endpoint-path">/maps/{id}/versions/{v}/restore</span><span class="endpoint-desc">Restore map metadata (MANAGER+)</span></div>
+</div>
 
-<p>A <strong>"Who has access?"</strong> view for any resource. Shows all direct grants with group member counts. Accessible to manager+ on the resource.</p>
+<h3 id="api-expressions">Saved Expressions</h3>
+<div class="card">
+  <div class="endpoint-row"><span class="endpoint-method"><span class="badge badge-post">POST</span></span><span class="endpoint-path">/layers/{id}/expressions</span><span class="endpoint-desc">{name, description?, expression} — validates DSL before saving (EDITOR+)</span></div>
+  <div class="endpoint-row"><span class="endpoint-method"><span class="badge badge-get">GET</span></span><span class="endpoint-path">/layers/{id}/expressions</span><span class="endpoint-desc">List expressions for layer (VIEWER+)</span></div>
+  <div class="endpoint-row"><span class="endpoint-method"><span class="badge badge-get">GET</span></span><span class="endpoint-path">/layers/{id}/expressions/{eid}</span><span class="endpoint-desc">Get full expression JSON (VIEWER+)</span></div>
+  <div class="endpoint-row"><span class="endpoint-method"><span class="badge badge-put">PUT</span></span><span class="endpoint-path">/layers/{id}/expressions/{eid}</span><span class="endpoint-desc">Update expression (validates DSL; invalidates Redis cache) (EDITOR+)</span></div>
+  <div class="endpoint-row"><span class="endpoint-method"><span class="badge badge-delete">DELETE</span></span><span class="endpoint-path">/layers/{id}/expressions/{eid}</span><span class="endpoint-desc">Delete expression (EDITOR+)</span></div>
+</div>
 
-<pre><code>GET /permissions/audit?resource_type=layer&resource_id=uuid</code></pre>
+<h3 id="api-permissions">Permissions</h3>
+<div class="card">
+  <div class="endpoint-row"><span class="endpoint-method"><span class="badge badge-post">POST</span></span><span class="endpoint-path">/permissions</span><span class="endpoint-desc">{who_user_id|who_group_id, resource_type, resource_id, role_level} — grant (MANAGER+)</span></div>
+  <div class="endpoint-row"><span class="endpoint-method"><span class="badge badge-get">GET</span></span><span class="endpoint-path">/permissions?resource_type=&amp;resource_id=</span><span class="endpoint-desc">List all grants for a resource (MANAGER+)</span></div>
+  <div class="endpoint-row"><span class="endpoint-method"><span class="badge badge-delete">DELETE</span></span><span class="endpoint-path">/permissions/{id}</span><span class="endpoint-desc">Revoke a specific permission row (MANAGER+). Invalidates Redis group cache for affected user.</span></div>
+</div>
 
+<h3 id="api-users">Users &amp; Groups</h3>
+<div class="card">
+  <div class="endpoint-row"><span class="endpoint-method"><span class="badge badge-get">GET</span></span><span class="endpoint-path">/users</span><span class="endpoint-desc">List users (superadmin)</span></div>
+  <div class="endpoint-row"><span class="endpoint-method"><span class="badge badge-get">GET</span></span><span class="endpoint-path">/users/me</span><span class="endpoint-desc">Current user profile</span></div>
+  <div class="endpoint-row"><span class="endpoint-method"><span class="badge badge-post">POST</span></span><span class="endpoint-path">/users/{id}/activate</span><span class="endpoint-desc">Activate user account (superadmin)</span></div>
+  <div class="endpoint-row"><span class="endpoint-method"><span class="badge badge-post">POST</span></span><span class="endpoint-path">/users/{id}/deactivate</span><span class="endpoint-desc">Deactivate user (superadmin)</span></div>
+  <div class="endpoint-row"><span class="endpoint-method"><span class="badge badge-post">POST</span></span><span class="endpoint-path">/users/{id}/make-superadmin</span><span class="endpoint-desc">Grant superadmin (superadmin)</span></div>
+  <div class="endpoint-row"><span class="endpoint-method"><span class="badge badge-get">GET</span></span><span class="endpoint-path">/groups</span><span class="endpoint-desc">List custom groups + MS group links</span></div>
+  <div class="endpoint-row"><span class="endpoint-method"><span class="badge badge-post">POST</span></span><span class="endpoint-path">/groups</span><span class="endpoint-desc">Create custom group</span></div>
+  <div class="endpoint-row"><span class="endpoint-method"><span class="badge badge-post">POST</span></span><span class="endpoint-path">/groups/{id}/members</span><span class="endpoint-desc">Add member → invalidates Redis groups:{user_id} cache</span></div>
+  <div class="endpoint-row"><span class="endpoint-method"><span class="badge badge-delete">DELETE</span></span><span class="endpoint-path">/groups/{id}/members/{user_id}</span><span class="endpoint-desc">Remove member → invalidates Redis groups:{user_id} cache</span></div>
+</div>
+
+<!-- ======================================================= SECTION 7: CACHING -->
+<h2 id="caching">Section 7 — Caching Strategy</h2>
+
+<p>Redis is configured but currently unused. The biggest performance win is caching <code>_resolve_custom_group_ids()</code> which runs a recursive CTE on <strong>every authenticated request</strong>.</p>
+
+<h3 id="cache-registry">Cache Key Registry</h3>
 <table>
-  <thead><tr><th>Auth</th><th>Rule</th></tr></thead>
-  <tbody>
-    <tr><td><span class="badge badge-manager">manager+</span> on resource</td><td>Sees all direct grants on that resource</td></tr>
-    <tr><td><span class="badge badge-super">superadmin</span></td><td>Sees everything</td></tr>
-  </tbody>
+  <tr><th>Key</th><th>TTL</th><th>What's stored</th><th>Invalidated when</th></tr>
+  <tr><td class="mono">groups:{user_id}</td><td>5 min</td><td>List of group ID strings from recursive CTE</td><td>Member added/removed from any group (<code>/groups/{id}/members</code>)</td></tr>
+  <tr><td class="mono">lastseen:{user_id}</td><td>60 s</td><td>Sentinel (value=1) — presence means last_seen_at was recently written</td><td>Expires naturally — next request after 60s writes to DB again</td></tr>
+  <tr><td class="mono">maptree:{map_id}</td><td>30 s</td><td>Flat rows from <code>get_map_layer_tree()</code> SQL function before Python assembly</td><td>Any map_layers or map_groups change for that map</td></tr>
+  <tr><td class="mono">mapfresh:{map_id}</td><td>30 s</td><td>Full freshness response JSON</td><td>Any feature mutation via <code>refresh_map_content_for_layer()</code></td></tr>
+  <tr><td class="mono">layermaps:{layer_id}</td><td>1 hr</td><td>Set of map_ids containing this layer (reverse index)</td><td>Layer added/removed from a map; used to find which maps to invalidate</td></tr>
+  <tr><td class="mono">stats:{layer_id}</td><td>60 s</td><td>Full stats dict from <code>compute_layer_stats()</code></td><td>Any feature mutation</td></tr>
+  <tr><td class="mono">expr:{expression_id}</td><td>5 min</td><td>Saved expression JSONB</td><td>Expression updated or deleted</td></tr>
+  <tr><td class="mono">valid_srids</td><td>Permanent</td><td>In-process frozenset of all EPSG codes from spatial_ref_sys. Loaded once at startup in main.py lifespan.</td><td>Restart only — EPSG codes never change at runtime</td></tr>
 </table>
-
-<p><strong>Response:</strong></p>
-<pre><code>{
-  <span class="str">"resource_type"</span>: <span class="str">"layer"</span>,
-  <span class="str">"resource_id"</span>: <span class="str">"uuid"</span>,
-  <span class="str">"resource_name"</span>: <span class="str">"Roads"</span>,
-  <span class="str">"is_public"</span>: <span class="kw">false</span>,
-  <span class="str">"direct_grants"</span>: [
-    {
-      <span class="str">"type"</span>: <span class="str">"user"</span>,
-      <span class="str">"user_id"</span>: <span class="str">"uuid"</span>,
-      <span class="str">"display_name"</span>: <span class="str">"John Doe"</span>,
-      <span class="str">"email"</span>: <span class="str">"john@org.com"</span>,
-      <span class="str">"role_level"</span>: <span class="num">2</span>,
-      <span class="str">"granted_by"</span>: <span class="str">"Jane Admin"</span>,
-      <span class="str">"granted_at"</span>: <span class="str">"2026-04-20T..."</span>
-    },
-    {
-      <span class="str">"type"</span>: <span class="str">"group"</span>,
-      <span class="str">"group_id"</span>: <span class="str">"uuid"</span>,
-      <span class="str">"group_name"</span>: <span class="str">"Field Team"</span>,
-      <span class="str">"role_level"</span>: <span class="num">1</span>,
-      <span class="str">"member_count"</span>: <span class="num">12</span>,
-      <span class="str">"granted_at"</span>: <span class="str">"2026-04-18T..."</span>
-    }
-  ]
-}</code></pre>
 
 <div class="callout callout-ok">
-  <strong>Frontend:</strong> A "Who has access?" panel/modal on each layer, map, folder, and workspace detail page. Visible only to manager+ on the resource. Shows a table of users and groups with their role and when it was granted.
+  <strong>Performance impact:</strong> Before caching, a typical authenticated feature request makes 5 DB round-trips (JWT decode + user SELECT + last_seen UPDATE + recursive CTE + permission check). After caching: 1 DB round-trip + 2 Redis ops (~0.2ms each vs ~3ms per DB query on pgbouncer).
 </div>
-</section>
 
-<!-- ============================================================ -->
-<!-- 12. USAGE STATISTICS -->
-<!-- ============================================================ -->
-<section id="stats">
-<h2>12. Layer &amp; Map Usage Statistics</h2>
+<!-- ======================================================= SECTION 8: IMPLEMENTATION PLAN -->
+<h2 id="implementation">Section 8 — Implementation Plan for Claude</h2>
 
-<p>Admin-only view of how a layer or map is being used. Built on the existing <code>layer_events</code> table (never written to currently) plus a new <code>map_events</code> table.</p>
+<p>This section is the step-by-step guide for implementing all features described above. Follow the steps in order — later steps depend on earlier ones. All migrations use the Alembic commands shown in CLAUDE.md.</p>
 
-<h3 id="stats-db">DB Changes <span style="color:var(--text-muted);font-weight:400;font-size:14px">(migration 008_search_and_stats.py)</span></h3>
+<h3 id="impl-migrations">Migrations (in order)</h3>
 
-<pre><code><span class="cm">-- Map-level events table (layer_events already exists)</span>
-<span class="kw">CREATE TABLE</span> map_events (
-    id         <span class="ty">BIGSERIAL</span> <span class="kw">PRIMARY KEY</span>,
-    map_id     <span class="ty">UUID</span> <span class="kw">REFERENCES</span> maps(id) <span class="kw">ON DELETE CASCADE</span>,
-    user_id    <span class="ty">UUID</span> <span class="kw">REFERENCES</span> users(id),
-    event_type <span class="ty">TEXT</span> <span class="kw">NOT NULL</span>,   <span class="cm">-- 'view'</span>
-    created_at <span class="ty">TIMESTAMPTZ</span> <span class="kw">NOT NULL DEFAULT</span> <span class="fn">now</span>()
-);
-<span class="kw">CREATE INDEX</span> map_events_map_id_idx     <span class="kw">ON</span> map_events(map_id);
-<span class="kw">CREATE INDEX</span> map_events_created_at_idx <span class="kw">ON</span> map_events(created_at <span class="kw">DESC</span>);</code></pre>
+<div class="card">
+  <h4>Migration 007_maps_and_map_groups.py — meta branch</h4>
+  <p>Creates: <code>maps</code>, <code>map_groups</code> (with <code>embedded_map_id</code>), <code>map_layers</code> (with <code>filter_expression</code>), and the <code>get_map_layer_tree()</code> SQL function. Also creates all indexes listed in the schema section.</p>
+</div>
 
-<h4>Event Types to Record</h4>
-<table>
-  <thead><tr><th>Table</th><th>Event Type</th><th>Triggered By</th></tr></thead>
-  <tbody>
-    <tr><td><code>layer_events</code></td><td><code>feature_read</code></td><td><code>GET /features?layer_id=X</code></td></tr>
-    <tr><td><code>layer_events</code></td><td><code>feature_write</code></td><td><code>POST/PUT/DELETE /features</code></td></tr>
-    <tr><td><code>layer_events</code></td><td><code>export</code></td><td><code>GET /layers/{id}/export</code></td></tr>
-    <tr><td><code>layer_events</code></td><td><code>style_change</code></td><td><code>PUT /layers/{id}/style</code></td></tr>
-    <tr><td><code>map_events</code></td><td><code>view</code></td><td><code>GET /maps/{id}/open</code></td></tr>
-  </tbody>
-</table>
+<div class="card">
+  <h4>Migration 008_resource_versions.py — meta branch</h4>
+  <p>Creates: <code>resource_type ENUM</code>, <code>resource_versions</code> table, <code>next_resource_version()</code> SQL function using FOR UPDATE to prevent race conditions.</p>
+</div>
+
+<div class="card">
+  <h4>Migration 009_change_tracking.py — meta branch</h4>
+  <p>Adds to <code>layers</code>: <code>features_updated_at TIMESTAMPTZ</code>, <code>features_updated_by UUID → users</code>, <code>updated_by UUID → users</code>. Creates index on <code>features_updated_at DESC NULLS LAST WHERE deleted_at IS NULL</code>.</p>
+</div>
+
+<div class="card">
+  <h4>Migration 010_saved_expressions.py — meta branch</h4>
+  <p>Creates: <code>saved_expressions</code> table with UNIQUE(layer_id, name). FK to layers with ON DELETE CASCADE.</p>
+</div>
+
+<div class="card">
+  <h4>Migration 002f_feature_stats_indexes.py — features branch</h4>
+  <p>Creates partial indexes on all 32 feature partitions: <code>CREATE INDEX features_p{N}_layer_del_idx ON features_p{N} (layer_id, deleted_at) WHERE deleted_at IS NULL</code>. Use a PL/pgSQL DO block to loop 0..31.</p>
+</div>
+
+<h3 id="impl-backend">New Backend Files</h3>
+
+<div class="card">
+  <h4>api/app/cache.py — Redis client module</h4>
+  <p>Functions: <code>get_redis()</code>, <code>cache_get(key)</code>, <code>cache_set(key, value, ttl)</code>, <code>cache_delete(key)</code>, <code>cache_delete_pattern(pattern)</code>. Uses <code>redis.asyncio</code> client. Singleton connection stored in module-level variable.</p>
+</div>
+
+<div class="card">
+  <h4>api/app/models/maps.py — ORM models</h4>
+  <p>SQLAlchemy models: <code>Map</code>, <code>MapGroup</code>, <code>MapLayer</code>. All columns from schema section above.</p>
+</div>
+
+<div class="card">
+  <h4>api/app/models/versions.py — ORM model</h4>
+  <p>SQLAlchemy model: <code>ResourceVersion</code> with BIGSERIAL pk, snapshot JSONB, changed_fields ARRAY(Text).</p>
+</div>
+
+<div class="card">
+  <h4>api/app/schemas/maps.py — Pydantic schemas</h4>
+  <p><code>MapCreate</code>, <code>MapUpdate</code>, <code>MapResponse</code>, <code>MapGroupCreate</code>, <code>MapGroupUpdate</code>, <code>MapGroupResponse</code>, <code>MapLayerAdd</code>, <code>MapLayerUpdate</code>, <code>MapOpenResponse</code>, <code>MapFreshnessResponse</code>.</p>
+</div>
+
+<div class="card">
+  <h4>api/app/schemas/versions.py — Pydantic schemas</h4>
+  <p><code>VersionListItem</code> (id, version, changed_fields, changed_by, changed_at, message), <code>VersionDetail</code> (adds snapshot), <code>VersionRestoreResponse</code>.</p>
+</div>
+
+<div class="card">
+  <h4>api/app/services/feature_filter.py — injection-safe DSL compiler</h4>
+  <p><code>compile_expression(expr, schema_fields, params, prefix, depth)</code> — recursive, returns SQL clause string. All field names and values go through <code>params</code> dict as named placeholders. Raises <code>ValueError</code> on unknown field/op or depth &gt; 10.</p>
+</div>
+
+<div class="card">
+  <h4>api/app/services/map_service.py — map business logic</h4>
+  <p>Functions: <code>create_map</code>, <code>update_map</code>, <code>delete_map</code>, <code>get_map_layer_tree</code> (calls SQL function + assembles tree), <code>create_map_group</code> (validates no cycle on embedded_map_id), <code>update_map_group</code>, <code>delete_map_group</code>, <code>add_layer_to_map</code>, <code>remove_layer_from_map</code>, <code>refresh_map_extent</code>, <code>refresh_map_content_for_layer</code> (fire-and-forget, uses Redis layermaps:{layer_id} reverse index), <code>get_map_freshness</code>.</p>
+</div>
+
+<div class="card">
+  <h4>api/app/services/version_service.py — version recording</h4>
+  <p>Functions: <code>record_version(db, resource_type, resource_id, snapshot, changed_fields, actor_id, message)</code> — calls <code>next_resource_version()</code> in same transaction. <code>get_versions</code>, <code>get_version_snapshot</code>, <code>restore_version</code>.</p>
+</div>
+
+<div class="card">
+  <h4>api/app/services/export_service.py — export formats</h4>
+  <p><code>export_geojson(shard_db, layer_id, target_srid)</code> — streaming FeatureCollection bytes. <code>export_shapefile(shard_db, layer, target_srid)</code> — pyshp, returns zip bytes, run via <code>asyncio.to_thread()</code>. <code>export_gpkg(shard_db, layer, target_srid)</code> — fiona GPKG driver, run via <code>asyncio.to_thread()</code>.</p>
+</div>
+
+<div class="card">
+  <h4>api/app/services/stats_service.py — attribute statistics</h4>
+  <p><code>get_layer_stats(shard_db, meta_db, layer_id, json_schema)</code> — checks Redis first (<code>stats:{layer_id}</code>, 60s TTL), then runs SQL queries for count, geometry breakdown, bbox, and per-field stats for each field type (string/number/boolean). Returns structured dict and caches result.</p>
+</div>
+
+<div class="card">
+  <h4>api/app/routers/maps.py — map endpoints</h4>
+  <p>All map endpoints from Section 6 above. Register in <code>main.py</code>: <code>app.include_router(maps.router)</code>. ETag header on <code>GET /maps/{id}/open</code>.</p>
+</div>
+
+<h3 id="impl-modified">Modified Backend Files</h3>
+
+<div class="card">
+  <h4>api/app/services/layer_geometry.py — add three functions</h4>
+  <p>Add <code>refresh_layer_bbox(layer_id, shard_db, meta_db)</code>: ST_Envelope(ST_Collect(geom)) → UPDATE layers SET bbox = ..., return [xmin,ymin,xmax,ymax] or None. Fire-and-forget pattern same as existing function.</p>
+  <p>Add <code>refresh_layer_feature_stamp(layer_id, actor_id, meta_db)</code>: UPDATE layers SET features_updated_at=NOW(), features_updated_by=CAST(:actor AS uuid), updated_at=NOW(). Fire-and-forget. Called on <strong>every</strong> feature mutation, not just geom changes.</p>
+</div>
+
+<div class="card">
+  <h4>api/app/routers/features.py — bug fix + new params</h4>
+  <p><strong>Bug fix (line 206):</strong> Move <code>refresh_layer_geometry_types</code> + <code>refresh_layer_bbox</code> inside <code>if body.geom is not None</code>, but move <code>refresh_layer_feature_stamp</code> OUTSIDE to run unconditionally on every update.</p>
+  <p>Add to <code>list_features()</code>: <code>spatial_op</code>, <code>filter_geojson</code>, <code>filter_distance_m</code>, <code>expression_id</code>, <code>expression</code>, <code>zoom</code>, <code>srid</code> query params. Build parameterized SQL fragments for each. Use <code>compile_expression()</code> for expression params. Use <code>app.state.valid_srids</code> for SRID validation.</p>
+</div>
+
+<div class="card">
+  <h4>api/app/routers/layers.py — new endpoints</h4>
+  <p>Add: <code>GET /layers/{id}/export</code>, <code>GET /layers/{id}/stats</code>, <code>GET /layers/{id}/versions</code>, <code>GET /layers/{id}/versions/{v}</code>, <code>POST /layers/{id}/versions/{v}/restore</code>, <code>POST /layers/{id}/expressions</code>, <code>GET /layers/{id}/expressions</code>, <code>GET /layers/{id}/expressions/{eid}</code>, <code>PUT /layers/{id}/expressions/{eid}</code>, <code>DELETE /layers/{id}/expressions/{eid}</code>.</p>
+  <p>Modify <code>update_layer()</code>: before commit, capture old snapshot, detect changed_fields, call <code>record_version()</code> inside same transaction.</p>
+</div>
+
+<div class="card">
+  <h4>api/app/schemas/layers.py — add bbox to LayerResponse</h4>
+  <p>Add: <code>bbox: list[float] | None = None</code>  — serialized as [lon_min, lat_min, lon_max, lat_max] by converting the GeoAlchemy2 WKB using ST_XMin/YMin/XMax/YMax in the router query.</p>
+  <p>Add: <code>features_updated_at: datetime | None</code>, <code>features_updated_by: str | None</code>, <code>updated_by: str | None</code>.</p>
+</div>
+
+<div class="card">
+  <h4>api/app/auth/local.py — Redis caching</h4>
+  <p><code>_resolve_custom_group_ids()</code>: wrap with <code>await cache_get(f"groups:{user_id}")</code> before recursive CTE; <code>await cache_set(..., ttl=300)</code> after.</p>
+  <p><code>validate_token()</code>: debounce <code>last_seen_at</code> write — check <code>await cache_get(f"lastseen:{user_id}")</code>; only write to DB if None; set sentinel after write with ttl=60.</p>
+</div>
+
+<div class="card">
+  <h4>api/app/main.py — startup + router registration</h4>
+  <p>In lifespan: after MinIO bucket creation, load all SRID codes from <code>spatial_ref_sys</code> into <code>app.state.valid_srids: frozenset[int]</code>.</p>
+  <p>Add: <code>from app.routers import maps; app.include_router(maps.router)</code>.</p>
+  <p>Add to <code>requirements.txt</code>: <code>pyshp==2.3.1</code>, <code>fiona==1.9.6</code>, <code>redis[asyncio]==5.0.4</code>.</p>
+</div>
+
+<h3 id="impl-frontend">Frontend Files</h3>
+
+<div class="card">
+  <h4>web/src/types/index.ts — new types</h4>
+  <p>Add: <code>GeoMap</code>, <code>MapGroup</code>, <code>MapLayerEntry</code>, <code>MapTreeNode</code>, <code>LayerStats</code>, <code>FieldStat</code>. Update <code>Layer</code> interface: add <code>bbox: [number,number,number,number] | null</code>, <code>features_updated_at: string | null</code>, <code>features_updated_by: string | null</code>.</p>
+</div>
+
+<div class="card">
+  <h4>web/src/api/maps.ts — new API module</h4>
+  <p>Functions for all map CRUD, group CRUD, layer add/remove/update, bulk permission grant, layer export URL builder, layer stats. Use plain axios + client.ts — no React Query.</p>
+</div>
+
+<div class="card">
+  <h4>web/src/components/maps/MapGroupTree.tsx — new component</h4>
+  <p>Recursive Ant Design tree showing groups and layers. Group nodes: folder icon, expand/collapse, kebab menu (Add sub-group, Rename, Delete, Grant permissions). Layer nodes: geometry icon, visibility eye toggle, Export dropdown. Embedded map nodes: distinct icon, read-only children. Drag-and-drop reorder via Ant Design Tree draggable prop.</p>
+</div>
+
+<div class="card">
+  <h4>web/src/components/maps/ExpressionBuilder.tsx — new component</h4>
+  <p>Nested AND/OR group builder. Field selector (dropdown of layer schema fields). Op selector (adapts to field type — number shows gt/lt, string shows contains). Value input (type-aware). "Save as..." calls POST /layers/{id}/expressions. "Load saved" lists expressions for the layer.</p>
+</div>
+
+<div class="card">
+  <h4>web/src/pages/MapPage.tsx — major refactor</h4>
+  <p>Left sidebar: after database selector add Map selector (GET /maps?workspace_id=). Replace flat layer list with MapGroupTree populated from GET /maps/{id}/open. "Add Group" button. "Manage Layers" button → layer picker modal. Map extent auto-zoom: if map.extent is non-null, call mapInstance.fitBounds(extent) on open.</p>
+</div>
+
+<div class="card">
+  <h4>web/src/pages/MapsPage.tsx — new page</h4>
+  <p>List maps per workspace, create/rename/delete maps. Route: /maps-admin. Add to Sidebar nav.</p>
+</div>
+
+<div class="card">
+  <h4>web/src/pages/LayerDetailPage.tsx — additions</h4>
+  <p>Add export section: three buttons (GeoJSON/Shapefile/GeoPackage) using layerExport.url(). Add stats collapsible panel: feature count + geometry type pills + field stats table. Add version history tab: list versions with changed_fields chips and restore button.</p>
+</div>
+
+<h3 id="impl-order">Step-by-Step Implementation Order</h3>
+<p>Steps with no dependencies can be done in parallel; steps that reference earlier steps must wait.</p>
+
+<div class="card">
+  <div class="step-row"><span class="step-num">1</span><div class="step-content"><strong>Migration 007</strong> — maps, map_groups (+ embedded_map_id), map_layers (+ filter_expression), get_map_layer_tree() SQL function, all indexes</div></div>
+  <div class="step-row"><span class="step-num">2</span><div class="step-content"><strong>Migration 008</strong> — resource_type ENUM, resource_versions table, next_resource_version() SQL function</div></div>
+  <div class="step-row"><span class="step-num">3</span><div class="step-content"><strong>Migration 009</strong> — features_updated_at, features_updated_by, updated_by columns on layers + index</div></div>
+  <div class="step-row"><span class="step-num">4</span><div class="step-content"><strong>Migration 010</strong> — saved_expressions table</div></div>
+  <div class="step-row"><span class="step-num">5</span><div class="step-content"><strong>Migration 002f</strong> (features branch) — per-partition stats indexes DO block</div></div>
+  <div class="step-row"><span class="step-num">6</span><div class="step-content"><strong>requirements.txt</strong> — add pyshp, fiona, redis[asyncio]</div></div>
+  <div class="step-row"><span class="step-num">7</span><div class="step-content"><strong>cache.py</strong> — Redis client module (get_redis, cache_get, cache_set, cache_delete, cache_delete_pattern)</div></div>
+  <div class="step-row"><span class="step-num">8</span><div class="step-content"><strong>auth/local.py</strong> — wire cache into _resolve_custom_group_ids() (5-min TTL) and validate_token() last_seen debounce (60s sentinel)</div></div>
+  <div class="step-row"><span class="step-num">9</span><div class="step-content"><strong>layer_geometry.py</strong> — add refresh_layer_bbox() and refresh_layer_feature_stamp(). <span style="color:var(--red)">BUG FIX in features.py</span>: call refresh_layer_feature_stamp() unconditionally; call refresh_layer_bbox() alongside refresh_layer_geometry_types() at all 4 mutation sites</div></div>
+  <div class="step-row"><span class="step-num">10</span><div class="step-content"><strong>schemas/layers.py</strong> — add bbox, features_updated_at, features_updated_by, updated_by to LayerResponse</div></div>
+  <div class="step-row"><span class="step-num">11</span><div class="step-content"><strong>feature_filter.py</strong> — compile_expression() DSL (injection-safe, recursive, depth-limited, allowlist ops)</div></div>
+  <div class="step-row"><span class="step-num">12</span><div class="step-content"><strong>features.py</strong> — add zoom, srid, spatial_op, filter_geojson, filter_distance_m, expression_id, expression params to list_features()</div></div>
+  <div class="step-row"><span class="step-num">13</span><div class="step-content"><strong>models/maps.py + models/versions.py</strong> — SQLAlchemy ORM models for all new tables</div></div>
+  <div class="step-row"><span class="step-num">14</span><div class="step-content"><strong>schemas/maps.py + schemas/versions.py</strong> — Pydantic schemas for request/response</div></div>
+  <div class="step-row"><span class="step-num">15</span><div class="step-content"><strong>services/map_service.py</strong> — full map CRUD + get_map_layer_tree() + embedded map resolution + cycle check + refresh_map_content_for_layer() + layermaps:{layer_id} Redis set + get_map_freshness()</div></div>
+  <div class="step-row"><span class="step-num">16</span><div class="step-content"><strong>services/version_service.py</strong> — record_version(), get_versions(), get_version_snapshot(), restore_version()</div></div>
+  <div class="step-row"><span class="step-num">17</span><div class="step-content"><strong>routers/maps.py + main.py</strong> — all map endpoints, ETag on /open, Redis cache on /freshness, include_router</div></div>
+  <div class="step-row"><span class="step-num">18</span><div class="step-content"><strong>routers/layers.py</strong> — version endpoints + record_version() in update_layer(). Also: expression CRUD endpoints.</div></div>
+  <div class="step-row"><span class="step-num">19</span><div class="step-content"><strong>services/export_service.py</strong> — geojson/shapefile/gpkg exports. Shapefile + GPKG via asyncio.to_thread().</div></div>
+  <div class="step-row"><span class="step-num">20</span><div class="step-content"><strong>routers/layers.py</strong> — /export endpoint with SRID validation against app.state.valid_srids</div></div>
+  <div class="step-row"><span class="step-num">21</span><div class="step-content"><strong>services/stats_service.py</strong> — compute_layer_stats() with Redis caching. Requires step 5 indexes for efficiency.</div></div>
+  <div class="step-row"><span class="step-num">22</span><div class="step-content"><strong>routers/layers.py</strong> — /stats endpoint. Invalidate stats:{layer_id} in features.py after every mutation.</div></div>
+  <div class="step-row"><span class="step-num">23</span><div class="step-content"><strong>main.py lifespan</strong> — load valid_srids frozenset from spatial_ref_sys into app.state on startup</div></div>
+  <div class="step-row"><span class="step-num">24</span><div class="step-content"><strong>Frontend: types/index.ts</strong> — add all new TypeScript interfaces</div></div>
+  <div class="step-row"><span class="step-num">25</span><div class="step-content"><strong>Frontend: api/maps.ts</strong> — all map API calls, export URL builder, stats getter</div></div>
+  <div class="step-row"><span class="step-num">26</span><div class="step-content"><strong>Frontend: MapGroupTree.tsx</strong> — recursive tree component with drag-drop, freshness indicator, embedded map nodes</div></div>
+  <div class="step-row"><span class="step-num">27</span><div class="step-content"><strong>Frontend: ExpressionBuilder.tsx</strong> — nested AND/OR expression builder with save/load</div></div>
+  <div class="step-row"><span class="step-num">28</span><div class="step-content"><strong>Frontend: MapPage.tsx refactor</strong> — map selector + MapGroupTree + layer picker modal + fitBounds on open</div></div>
+  <div class="step-row"><span class="step-num">29</span><div class="step-content"><strong>Frontend: MapsPage.tsx + LayerDetailPage.tsx</strong> — maps admin page, export/stats/versions on layer detail</div></div>
+</div>
+
+<h3 id="impl-verify">Verification Tests (what to check after each step)</h3>
 
 <div class="callout">
-  All event writes are <strong>fire-and-forget</strong> (same <code>asyncio.create_task()</code> pattern as audit_service). They never slow down the main request.
+  <strong>After step 9 (bug fix):</strong> Do a properties-only feature edit (PUT with only <code>properties</code> changed, no <code>geom</code>). Confirm <code>layers.features_updated_at</code> updates and <code>layers.features_updated_by</code> = current user UUID. Previously this would produce no update at all.
 </div>
 
-<h3 id="stats-endpoints">Stats Endpoints</h3>
+<div class="callout">
+  <strong>After step 12 (expression queries):</strong> Injection test: <code>expression={"field":"'; DROP TABLE features; --","op":"eq","value":"x"}</code> → 400 (field not in schema), no SQL executed. Field names are bound as values to <code>properties-&gt;&gt;:f_0</code>, never interpolated.
+</div>
 
-<pre><code>GET /layers/{id}/stats?from=2026-01-01&to=2026-04-24
-GET /maps/{id}/stats?from=2026-01-01&to=2026-04-24</code></pre>
+<div class="callout">
+  <strong>After step 17 (maps):</strong> Create Map A with layers L1, L2. Create Map B and embed Map A as a group. GET /maps/B/open → tree contains embedded group node with L1, L2 nested. Try self-embed POST /maps/A/groups {embedded_map_id: A_id} → 400 from DB CHECK constraint. Try cycle: B embeds A, then A embeds B → 400 from _check_embed_cycle().
+</div>
 
-<table>
-  <thead><tr><th>Auth</th><th>Rule</th></tr></thead>
-  <tbody>
-    <tr><td><span class="badge badge-admin">admin</span> on resource</td><td>Can view stats for that resource</td></tr>
-    <tr><td><span class="badge badge-super">superadmin</span></td><td>Can view stats for everything</td></tr>
-    <tr><td>Others</td><td>403</td></tr>
-  </tbody>
-</table>
+<div class="callout">
+  <strong>After step 20 (export):</strong> GET /layers/{id}/export?format=geojson → valid FeatureCollection, Content-Disposition: attachment. format=shapefile → unzip → 4 files, feature count matches. Invalid srid=99999 → 400 with clear error.
+</div>
 
-<p><strong>Layer stats response:</strong></p>
-<pre><code>{
-  <span class="str">"layer_id"</span>: <span class="str">"uuid"</span>, <span class="str">"layer_name"</span>: <span class="str">"Roads"</span>,
-  <span class="str">"period"</span>: { <span class="str">"from"</span>: <span class="str">"2026-01-01"</span>, <span class="str">"to"</span>: <span class="str">"2026-04-24"</span> },
-  <span class="str">"totals"</span>: {
-    <span class="str">"feature_reads"</span>: <span class="num">891</span>, <span class="str">"feature_writes"</span>: <span class="num">34</span>,
-    <span class="str">"exports"</span>: <span class="num">7</span>, <span class="str">"style_changes"</span>: <span class="num">2</span>
-  },
-  <span class="str">"unique_users"</span>: <span class="num">18</span>,
-  <span class="str">"last_accessed"</span>: <span class="str">"2026-04-23T14:30:00Z"</span>,
-  <span class="str">"top_users"</span>: [
-    { <span class="str">"display_name"</span>: <span class="str">"Jane"</span>, <span class="str">"email"</span>: <span class="str">"jane@org.com"</span>, <span class="str">"event_count"</span>: <span class="num">45</span> }
-  ],
-  <span class="str">"daily"</span>: [
-    { <span class="str">"date"</span>: <span class="str">"2026-04-23"</span>, <span class="str">"feature_reads"</span>: <span class="num">12</span>, <span class="str">"feature_writes"</span>: <span class="num">3</span>, <span class="str">"exports"</span>: <span class="num">1</span> }
-  ]
-}</code></pre>
+<div class="callout">
+  <strong>After step 22 (stats):</strong> Insert features with known property values. GET /layers/{id}/stats → counts, min/max/avg match. Call twice within 60s → Redis hit (no DB query on second call). Mutate a feature → stats:{layer_id} invalidated → next call computes fresh.
+</div>
 
-<p><strong>Map stats response:</strong></p>
-<pre><code>{
-  <span class="str">"map_id"</span>: <span class="str">"uuid"</span>, <span class="str">"map_name"</span>: <span class="str">"City Infrastructure"</span>,
-  <span class="str">"period"</span>: { <span class="str">"from"</span>: <span class="str">"2026-01-01"</span>, <span class="str">"to"</span>: <span class="str">"2026-04-24"</span> },
-  <span class="str">"totals"</span>: { <span class="str">"views"</span>: <span class="num">142</span> },
-  <span class="str">"unique_viewers"</span>: <span class="num">31</span>,
-  <span class="str">"last_viewed"</span>: <span class="str">"2026-04-24T09:15:00Z"</span>,
-  <span class="str">"top_viewers"</span>: [
-    { <span class="str">"display_name"</span>: <span class="str">"Bob"</span>, <span class="str">"view_count"</span>: <span class="num">22</span> }
-  ],
-  <span class="str">"daily"</span>: [
-    { <span class="str">"date"</span>: <span class="str">"2026-04-23"</span>, <span class="str">"views"</span>: <span class="num">12</span> }
-  ]
-}</code></pre>
-</section>
+<div class="callout">
+  <strong>ETag test:</strong> GET /maps/{id}/open → note ETag header value. Repeat with If-None-Match → 304. Edit a feature in any layer of the map → wait for fire-and-forget to propagate → next GET /maps/{id}/open returns new ETag.
+</div>
 
 </main>
 </body>
