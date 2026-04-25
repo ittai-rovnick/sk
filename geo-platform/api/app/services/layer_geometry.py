@@ -61,15 +61,22 @@ async def refresh_layer_bbox(
     Returns [xmin, ymin, xmax, ymax] or None if no features.
     """
     try:
+        # Compute extent corners directly. ST_Envelope on a single point or
+        # vertical/horizontal line returns a Point/LineString — we MUST always
+        # write a Polygon into layers.bbox (column type is Geometry(Polygon,4326)),
+        # so build it explicitly via ST_MakeEnvelope.
         row = await shard_db.execute(
             text(
-                "SELECT ST_AsText(ST_Envelope(ST_Collect(geom))) AS wkt "
+                "SELECT ST_XMin(ST_Collect(geom))::float8 AS xmin, "
+                "       ST_YMin(ST_Collect(geom))::float8 AS ymin, "
+                "       ST_XMax(ST_Collect(geom))::float8 AS xmax, "
+                "       ST_YMax(ST_Collect(geom))::float8 AS ymax "
                 "FROM features WHERE layer_id = CAST(:id AS uuid) AND deleted_at IS NULL"
             ),
             {"id": str(layer_id)},
         )
-        wkt = row.scalar_one_or_none()
-        if not wkt:
+        ext = row.one_or_none()
+        if not ext or ext[0] is None:
             await meta_db.execute(
                 text("UPDATE layers SET bbox = NULL WHERE id = CAST(:id AS uuid)"),
                 {"id": str(layer_id)},
@@ -77,25 +84,23 @@ async def refresh_layer_bbox(
             await meta_db.commit()
             return None
 
+        xmin, ymin, xmax, ymax = ext
+        # Pad degenerate (single-point or zero-width/height) envelopes by a tiny
+        # epsilon so the result is always a non-degenerate Polygon.
+        if xmin == xmax:
+            xmin -= 1e-9; xmax += 1e-9
+        if ymin == ymax:
+            ymin -= 1e-9; ymax += 1e-9
+
         await meta_db.execute(
             text(
-                "UPDATE layers SET bbox = ST_GeomFromText(:wkt, 4326) "
+                "UPDATE layers SET bbox = ST_MakeEnvelope(:xmin, :ymin, :xmax, :ymax, 4326) "
                 "WHERE id = CAST(:id AS uuid)"
             ),
-            {"wkt": wkt, "id": str(layer_id)},
-        )
-        # Extract [xmin, ymin, xmax, ymax] in the same transaction
-        ext_row = await meta_db.execute(
-            text(
-                "SELECT ST_XMin(bbox)::float8, ST_YMin(bbox)::float8, "
-                "ST_XMax(bbox)::float8, ST_YMax(bbox)::float8 "
-                "FROM layers WHERE id = CAST(:id AS uuid)"
-            ),
-            {"id": str(layer_id)},
+            {"xmin": xmin, "ymin": ymin, "xmax": xmax, "ymax": ymax, "id": str(layer_id)},
         )
         await meta_db.commit()
-        ext = ext_row.one_or_none()
-        return list(ext) if ext else None
+        return [float(xmin), float(ymin), float(xmax), float(ymax)]
     except Exception as exc:
         logger.warning("refresh_layer_bbox failed for layer %s: %s", layer_id, exc)
         return None

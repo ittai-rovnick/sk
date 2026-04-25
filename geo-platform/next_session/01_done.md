@@ -457,9 +457,19 @@ Major changes:
 
 ---
 
-## All 28 steps done.
+## All 28 steps done + runtime smoke-tested (2026-04-26)
 
-The full backend + frontend implementation plan is complete. Migrations still need to be run before any of this works at runtime — see "How to run the migrations" below.
+The full backend + frontend implementation plan is complete and the live system has been verified end-to-end:
+
+- Migrations applied: meta 007–010 + features 002f.
+- `pip install -r requirements.txt` succeeded after bumping `fiona==1.9.6` → `fiona==1.10.1` (1.9.6 has no Windows wheel for Python 3.13 and the source build needs GDAL_CONFIG which we don't have).
+- API boots clean: `from app.main import app` and `GET /health` → `{"status":"ok"}`.
+- All 20 new endpoints registered in `/openapi.json`: `/maps`, `/maps/{id}/open`, `/maps/{id}/freshness`, `/maps/{id}/groups[/{gid}[/permissions]]`, `/maps/{id}/layers[/{lid}]`, `/maps/{id}/versions[/{v}[/restore]]`, `/layers/identify`, `/layers/{id}/export`, `/layers/{id}/expressions[/{eid}]`, `/layers/{id}/stats`, `/layers/{id}/versions[/{v}[/restore]]`.
+- Functional smoke: created database → created map (content_version=0) → created layer → added Point feature → `POST /layers/identify` returned `feature_count_in_area=1`, `GET /layers/{id}/stats` returned correct count + geometry breakdown + bbox, `GET /layers/{id}/export?format=geojson` returned valid FeatureCollection, attached layer to map → `/open` showed content_version bumped to 1 and tree size 1.
+
+**Bug fixed during smoke test:** `services/layer_geometry.py::refresh_layer_bbox` was writing `ST_Envelope(ST_Collect(geom))` into the `layers.bbox Geometry(Polygon, 4326)` column — but for a single point or all-collinear features, that returns a Point/LineString and the column refuses it (`InvalidParameterValue: Geometry type (Point) does not match column type (Polygon)`). Replaced with explicit `ST_XMin/YMin/XMax/YMax` extraction + `ST_MakeEnvelope` (always returns a Polygon), with a 1e-9 epsilon pad for degenerate envelopes. After the fix the bbox round-trips correctly through the layers table and surfaces in identify/stats responses.
+
+**Runtime config note (not in git):** `geo_features` is exposed on host port **5434** (not 5433 as in the old `.env` template). `api/.env`'s `FEATURES_SHARD_0_URL` was updated locally; new contributors should set `localhost:5434/geo_features`.
 
 ---
 
