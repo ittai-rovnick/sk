@@ -335,6 +335,33 @@ Stats cache invalidation already wired in features.py via `_invalidate_after_mut
 
 ---
 
+## Step 22 — Frontend types (DONE)
+
+**File:** `web/src/types/index.ts`
+
+Added `bbox`, `features_updated_at`, `features_updated_by` to `Layer`. New interfaces:
+- `GeoMap`, `MapGroup`, `MapLayerNode`, `MapGroupNode`, `MapTreeNode`, `MapOpenResponse`, `MapFreshnessChangedLayer`, `MapFreshnessResponse`
+- `FieldStat` (string/number/boolean discriminated union, plus an `error` fallback variant), `LayerStats`
+- `IdentifyLayerNode`, `IdentifyGroupNode`, `IdentifyTreeNode`, `LayerIdentifyResponse`
+- `VersionListItem`, `VersionDetail`, `SavedExpressionListItem`, `SavedExpressionDetail`
+
+## Step 23 — Frontend API modules (DONE)
+
+**File:** `web/src/api/maps.ts` (new) + extends `web/src/api/layers.ts`
+
+`maps.ts`:
+- `mapsApi`: list, create, get, update, delete
+- `open(id, etag?)` — sends `If-None-Match` and `validateStatus: 200|304` so a 304 doesn't throw; returns the full Axios `AxiosResponse` so callers can read the `etag` header
+- `freshness(id, sinceISO)`
+- Group CRUD, layer add/remove/update, bulk group permission grant
+- `layerExportUrl(layerId, format, srid?)` — base URL only (Bearer is on axios interceptor; raw `<a href>` won't work)
+- `downloadLayerExport(...)` — axios blob → temporary `<a download>` so the auth header is included
+- `layerStatsApi.get(layerId)`
+
+`layers.ts`: appended `layers.identify(databaseId, geometry)`, `layers.versions.{list,get,restore}`, `layers.expressions.{list,get,create,update,delete}`.
+
+---
+
 ## How to run the migrations
 
 ```powershell

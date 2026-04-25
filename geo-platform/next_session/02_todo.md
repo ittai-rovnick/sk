@@ -16,6 +16,8 @@ The full design spec (schema tables, API shapes, permission model, caching, DSL)
 ## ~~Step 19 — Export endpoint~~ ✅ DONE
 ## ~~Step 20 — Stats Service~~ ✅ DONE
 ## ~~Step 21 — Stats endpoint~~ ✅ DONE
+## ~~Step 22 — Frontend TypeScript types~~ ✅ DONE
+## ~~Step 23 — Frontend API modules (maps + identify + versions + expressions)~~ ✅ DONE
 
 ---
 
