@@ -197,6 +197,51 @@ Three new SQLAlchemy model files:
 
 ---
 
+## Step 12 — Advanced Feature Query Params (DONE)
+
+**File:** `api/app/routers/features.py`
+
+`list_features()` now accepts:
+- `spatial_op` ∈ `{intersects, within, contains, dwithin}` + `filter_geojson` (+ `filter_distance_m` for dwithin)
+- `expression_id: UUID` — loads saved expression (Redis `expr:{id}` 300s, fallback DB)
+- `expression: str` — inline DSL JSON
+- `zoom: int` — applies `ST_SimplifyPreserveTopology` when zoom < 14, tolerance = `360 / (256 * 2^zoom)`
+- `srid: int` — validated against `request.app.state.valid_srids`, applies `ST_Transform`
+
+All spatial clauses come from a static `SPATIAL_CLAUSES` dict (no user text in SQL). Geometry SELECT is composed via `_build_geom_select()`.
+
+After every mutation (`create`, `update`, `delete`, `bulk_delete`): `_invalidate_after_mutation()` runs:
+- `refresh_layer_feature_stamp()` (existing)
+- `cache_delete(f"stats:{layer_id}")`
+- `asyncio.create_task(refresh_map_content_for_layer(...))` (fire-and-forget)
+
+---
+
+## Step 13 — Map Pydantic Schemas (DONE)
+
+**File:** `api/app/schemas/maps.py` (new)
+
+All schemas: `MapCreate/Update/Response`, `MapGroupCreate/Update/Response`, `MapLayerAdd/Update/Response`, `MapLayerNode`, `MapGroupNode` (recursive — `model_rebuild()` called), `MapOpenResponse`, `MapFreshnessChangedLayer`, `MapFreshnessResponse`, `GroupPermissionGrantRequest/Response`.
+
+---
+
+## Step 14 — Map Service (DONE)
+
+**File:** `api/app/services/map_service.py` (new)
+
+Implements:
+- CRUD: `get_map`, `list_maps`, `create_map`, `update_map`, `delete_map` (soft), `get_map_extent`
+- Group CRUD: `create_map_group` (with `_check_embed_cycle` max depth 5), `update_map_group`, `delete_map_group`
+- Layer membership: `add_layer_to_map` (bumps content_version + sadd Redis set + invalidate maptree), `remove_layer_from_map` (srem), `update_map_layer`
+- Tree: `get_map_layer_tree` (Redis `maptree:{map_id}` 30s) + `assemble_tree` (nested groups + layers, sorted by sort_order)
+- `refresh_map_extent` — union of layer bboxes
+- `refresh_map_content_for_layer` — fire-and-forget, opens own MetaSessionLocal session, bumps content_version on every map containing the layer
+- `get_map_freshness` — Redis `mapfresh:{map_id}:{since-iso}` 30s
+- `expand_group_layers` — recursive collection of layer_ids in group + sub-groups
+- `_invalidate_map_caches` — wildcard mapfresh delete via `scan_iter`
+
+---
+
 ## How to run the migrations
 
 ```powershell

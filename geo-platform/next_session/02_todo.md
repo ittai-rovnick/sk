@@ -6,7 +6,13 @@ The full design spec (schema tables, API shapes, permission model, caching, DSL)
 
 ---
 
-## Step 12 — Advanced Feature Query Params
+## ~~Step 12 — Advanced Feature Query Params~~ ✅ DONE (see 01_done.md)
+## ~~Step 13 — Map Pydantic Schemas~~ ✅ DONE
+## ~~Step 14 — Map Service~~ ✅ DONE
+
+---
+
+## Step 12 — Advanced Feature Query Params  (reference, completed)
 
 **File:** `api/app/routers/features.py`
 **Function:** `list_features()`
