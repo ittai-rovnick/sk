@@ -242,6 +242,40 @@ Implements:
 
 ---
 
+## Step 15 — Version Service (DONE)
+
+**File:** `api/app/services/version_service.py` (new)
+
+- `record_version()` — calls `next_resource_version()` SQL fn (FOR UPDATE → race-safe), inserts into `resource_versions`. **Does not commit** — the caller commits in the same transaction as the UPDATE it records.
+- `get_versions()`, `get_version()` — list / detail.
+- `restore_version()` — captures pre-restore snapshot, applies snapshot fields to live row, records new version with `message="Restored from v{n}"`, commits.
+- Whitelists: `LAYER_VERSION_FIELDS = ["name","description","status","srid","tags","sort_order","group_layer_id"]`, `MAP_VERSION_FIELDS = ["name","description"]`.
+- `_json_safe()` serializes UUIDs/datetimes via `default=str`.
+
+---
+
+## Step 16 — Maps Router + main.py wiring (DONE)
+
+**File:** `api/app/routers/maps.py` (new)
+**File:** `api/app/main.py` (edited)
+
+Endpoints registered (all gated by `can_user_do(map_id, op)`):
+- `POST/GET /maps`, `GET/PUT/DELETE /maps/{id}`
+- `GET /maps/{id}/open` — ETag `"{map_id}-{content_version}-{max_features_ts}"`, returns 304 on If-None-Match. Pulls flat rows from `get_map_layer_tree()` (Redis 30s) + assembles via `map_service.assemble_tree`. Includes `extent` array.
+- `GET /maps/{id}/freshness?since=<iso>` — Redis `mapfresh:{map_id}:{since}` 30s
+- `GET/POST/PUT/DELETE /maps/{id}/groups[/{gid}]`
+- `POST/DELETE/PUT /maps/{id}/layers[/{lid}]`
+- `POST /maps/{id}/groups/{gid}/permissions` — bulk grant per-layer Permission rows for the expanded group's layers
+- `GET/GET/POST /maps/{id}/versions[/{v}[/restore]]`
+
+`update_map_endpoint` records a version IFF any whitelisted field changed (record_version + final commit happen in one transaction).
+
+`main.py`:
+- Adds `import maps` and `app.include_router(maps.router)`
+- Lifespan now calls `_load_valid_srids(app)` populating `app.state.valid_srids: frozenset[int]` from `spatial_ref_sys`. Logged warning + empty frozenset on failure (so the API still boots if PostGIS isn't ready).
+
+---
+
 ## How to run the migrations
 
 ```powershell

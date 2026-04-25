@@ -9,6 +9,8 @@ The full design spec (schema tables, API shapes, permission model, caching, DSL)
 ## ~~Step 12 — Advanced Feature Query Params~~ ✅ DONE (see 01_done.md)
 ## ~~Step 13 — Map Pydantic Schemas~~ ✅ DONE
 ## ~~Step 14 — Map Service~~ ✅ DONE
+## ~~Step 15 — Version Service~~ ✅ DONE
+## ~~Step 16 — Maps Router + main.py wiring~~ ✅ DONE (uses /maps/{id}/versions for map version endpoints, satisfies original Step 18 too)
 
 ---
 

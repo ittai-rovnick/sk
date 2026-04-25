@@ -6,10 +6,11 @@ import uuid
 if sys.platform == "win32":
     asyncio.set_event_loop_policy(asyncio.WindowsSelectorEventLoopPolicy())
 
+import logging
 from contextlib import asynccontextmanager
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
-from sqlalchemy import select
+from sqlalchemy import select, text
 
 from app.config import settings
 from app.services.storage_service import ensure_buckets_exist
@@ -26,7 +27,10 @@ from app.routers import (
     groups,
     rasters,
     sync,
+    maps,
 )
+
+logger = logging.getLogger(__name__)
 
 _DEV_USER_ID = uuid.UUID("00000000-0000-0000-0000-000000000001")
 
@@ -48,11 +52,23 @@ async def _ensure_dev_user() -> None:
         break
 
 
+async def _load_valid_srids(app: FastAPI) -> None:
+    from app.db.session import MetaSessionLocal
+    try:
+        async with MetaSessionLocal() as db:
+            result = await db.execute(text("SELECT srid FROM spatial_ref_sys"))
+            app.state.valid_srids = frozenset(int(r[0]) for r in result.all())
+    except Exception as exc:
+        logger.warning("Failed to load valid SRIDs from spatial_ref_sys: %s", exc)
+        app.state.valid_srids = frozenset()
+
+
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     if settings.dev_mode:
         await _ensure_dev_user()
     await ensure_buckets_exist()
+    await _load_valid_srids(app)
     yield
 
 
@@ -83,3 +99,4 @@ app.include_router(users.router)
 app.include_router(groups.router)
 app.include_router(rasters.router)
 app.include_router(sync.router)
+app.include_router(maps.router)
