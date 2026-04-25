@@ -12,7 +12,11 @@ from app.auth.permissions import can_user_do
 from app.models.layers import Layer
 from app.schemas.features import FeatureCreate, FeatureUpdate, FeatureResponse, BboxQuery, BulkDeleteRequest
 from app.schemas.layers import ALLOWED_GEOMETRY_TYPES
-from app.services.layer_geometry import refresh_layer_geometry_types
+from app.services.layer_geometry import (
+    refresh_layer_geometry_types,
+    refresh_layer_bbox,
+    refresh_layer_feature_stamp,
+)
 from app.db.session import shard_sessions
 
 router = APIRouter(prefix="/layers", tags=["features"])
@@ -131,6 +135,8 @@ async def create_feature(
         await shard_db.commit()
         row = result.mappings().one()
         await refresh_layer_geometry_types(layer_id, shard_db, meta_db)
+        await refresh_layer_bbox(layer_id, shard_db, meta_db)
+    await refresh_layer_feature_stamp(layer_id, ctx.user_id, meta_db)
 
     return _row_to_feature(row)
 
@@ -205,9 +211,14 @@ async def update_feature(
         row = result.mappings().one_or_none()
         if row and body.geom is not None:
             await refresh_layer_geometry_types(layer_id, shard_db, meta_db)
+            await refresh_layer_bbox(layer_id, shard_db, meta_db)
 
     if not row:
         raise HTTPException(status_code=409, detail="Version conflict or feature not found")
+
+    # Always stamp — even for property-only edits (BUG FIX: was inside the geom block)
+    await refresh_layer_feature_stamp(layer_id, ctx.user_id, meta_db)
+
     return _row_to_feature(row)
 
 
@@ -240,6 +251,8 @@ async def delete_feature(
         if result.rowcount == 0:
             raise HTTPException(status_code=404, detail="Feature not found")
         await refresh_layer_geometry_types(layer_id, shard_db, meta_db)
+        await refresh_layer_bbox(layer_id, shard_db, meta_db)
+    await refresh_layer_feature_stamp(layer_id, ctx.user_id, meta_db)
 
 
 @router.post("/{layer_id}/features/bulk-delete", status_code=status.HTTP_200_OK)
@@ -273,5 +286,7 @@ async def bulk_delete_features(
         })
         await shard_db.commit()
         await refresh_layer_geometry_types(layer_id, shard_db, meta_db)
+        await refresh_layer_bbox(layer_id, shard_db, meta_db)
+    await refresh_layer_feature_stamp(layer_id, ctx.user_id, meta_db)
 
     return {"deleted": result.rowcount}

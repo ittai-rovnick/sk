@@ -6,6 +6,7 @@ from app.config import settings
 from app.auth.models import RequestContext
 from app.models.users import User
 from app.models.groups import CustomGroupMember, CustomGroupMsLink, MsGroup
+from app.cache import cache_get, cache_set
 
 TOKEN_ALGORITHM = "HS256"
 TOKEN_EXPIRE_DAYS = 30
@@ -33,11 +34,14 @@ async def validate_token(token: str, db: AsyncSession) -> RequestContext | None:
     if not user:
         return None
 
-    # Update last seen
-    await db.execute(
-        update(User).where(User.id == user.id).values(last_seen_at=datetime.now(timezone.utc))
-    )
-    await db.commit()
+    # Debounce last_seen_at writes to at most once per 60 seconds per user
+    debounce_key = f"lastseen:{str(user.id)}"
+    if await cache_get(debounce_key) is None:
+        await db.execute(
+            update(User).where(User.id == user.id).values(last_seen_at=datetime.now(timezone.utc))
+        )
+        await db.commit()
+        await cache_set(debounce_key, 1, ttl=60)
 
     custom_group_ids = await _resolve_custom_group_ids(db, user.id)
 
@@ -57,7 +61,14 @@ async def _resolve_custom_group_ids(db: AsyncSession, user_id) -> list[str]:
     parent P, the user effectively belongs to P (and P's parent, etc.).
     Depth is capped at 16 to protect against runaway recursion if a cycle ever
     slipped past the CHECK constraint and cycle-prevention logic.
+
+    Result is cached in Redis for 5 minutes (key: groups:{user_id}).
     """
+    cache_key = f"groups:{str(user_id)}"
+    cached = await cache_get(cache_key)
+    if cached is not None:
+        return cached
+
     result = await db.execute(
         text("""
         WITH RECURSIVE direct AS (
@@ -77,4 +88,6 @@ async def _resolve_custom_group_ids(db: AsyncSession, user_id) -> list[str]:
         """),
         {"uid": user_id},
     )
-    return [row[0] for row in result.all()]
+    group_ids = [row[0] for row in result.all()]
+    await cache_set(cache_key, group_ids, ttl=300)
+    return group_ids
