@@ -2,7 +2,7 @@
 
 Steps are ordered by dependency. Follow the order — later steps depend on earlier ones.
 
-The full design for every step is in `geo-platform/in-the-map-object-rustling-planet.md`.
+The full design spec (schema tables, API shapes, permission model, caching, DSL) is at `geo-platform/db_new_design.html` — open in a browser, it has a navigation sidebar.
 
 ---
 

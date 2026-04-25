@@ -8,9 +8,9 @@ You are continuing implementation of the geo-platform project. Everything you ne
 4. Read geo-platform/next_session/03_architecture.md  — design rules you must follow (fire-and-forget pattern, Redis cache keys, injection-safe DSL, Windows rules)
 5. Read geo-platform/CLAUDE.md                        — full project context (tech stack, all existing endpoints, critical rules)
 
-The full design doc with SQL, API shapes, and rationale is at:
+The full design doc with schema, API shapes, permission model, and rationale is at:
    geo-platform/db_new_design.html  (open in a browser — it has a navigation sidebar)
-   geo-platform/in-the-map-object-rustling-planet.md  (raw plan, very detailed)
+   This document represents the final intended state of the platform.
 
 == WHAT IS DONE (committed, do not redo) ==
 

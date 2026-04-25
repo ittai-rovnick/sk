@@ -74,7 +74,7 @@ Read the files in this folder in order:
 
 Then read `geo-platform/CLAUDE.md` for the full project context (tech stack, critical rules, existing endpoints).
 
-The master implementation plan is at `geo-platform/in-the-map-object-rustling-planet.md` — it has the full SQL, API design, and step-by-step order with dependency graph.
+The master design document is at `geo-platform/db_new_design.html` — open in a browser. It has the full schema, API reference, permission model, caching strategy, and implementation plan. That document represents the final intended state of the platform.
 
 ---
 
