@@ -19,6 +19,7 @@ The full design spec (schema tables, API shapes, permission model, caching, DSL)
 ## ~~Step 22 — Frontend TypeScript types~~ ✅ DONE
 ## ~~Step 23 — Frontend API modules (maps + identify + versions + expressions)~~ ✅ DONE
 ## ~~Step 24 — MapGroupTree component~~ ✅ DONE  (group reparent via DnD is intentionally not wired — toast directs users to the menu)
+## ~~Step 25 — ExpressionBuilder component~~ ✅ DONE
 
 ---
 

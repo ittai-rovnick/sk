@@ -386,6 +386,32 @@ Props:
 
 ---
 
+## Step 25 — ExpressionBuilder component (DONE)
+
+**File:** `web/src/components/maps/ExpressionBuilder.tsx` (new)
+
+Nested AND/OR DSL builder for the same JSON shape `compile_expression()` accepts on the backend.
+
+- Each `Group` renders as a `<Card>` with op selector (`AND`/`OR`), "Condition" / "Group" buttons, and a delete button (root group is undeletable).
+- Each `Condition` renders inline: field selector → op selector → value input. The op list adapts to field type (string / number / boolean) and changing the field resets op/value to type-appropriate defaults.
+- Special inputs: boolean → `<Switch>`; number → `<InputNumber>`; `in`/`not_in` → `<Select mode="tags">` with comma + Enter token separators; `between` → two `<InputNumber>`s for `lo`/`hi`; `is_null` / `is_not_null` → no value input.
+- Toolbar: **Save as…** → `layers.expressions.create` (validation errors from the backend's `compile_expression()` surface as a toast); **Load saved** → modal listing `layers.expressions.list`, click a row to load via `layers.expressions.get`; **Clear** → resets to `null`.
+- Pure path-based mutators (`replaceAt`, `appendAt`) — value flows are controlled via `value`/`onChange`, no internal expression state.
+
+Props:
+```ts
+{
+  layerId: string;
+  schema: { fields?: { name: string; type?: "string"|"number"|"boolean"|"date" }[] } | null;
+  value: Group | null;
+  onChange: (next: Group | null) => void;
+}
+```
+
+`tsc --noEmit` passes.
+
+---
+
 ## How to run the migrations
 
 ```powershell
