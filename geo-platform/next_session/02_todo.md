@@ -14,6 +14,8 @@ The full design spec (schema tables, API shapes, permission model, caching, DSL)
 ## ~~Step 17 — Layer identify + expression CRUD + version endpoints + groups cache invalidation~~ ✅ DONE
 ## ~~Step 18 — Export Service (geojson/shapefile/gpkg)~~ ✅ DONE — needs `pip install -r requirements.txt` to pull shapely
 ## ~~Step 19 — Export endpoint~~ ✅ DONE
+## ~~Step 20 — Stats Service~~ ✅ DONE
+## ~~Step 21 — Stats endpoint~~ ✅ DONE
 
 ---
 

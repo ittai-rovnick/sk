@@ -310,6 +310,31 @@ Endpoints registered (all gated by `can_user_do(map_id, op)`):
 
 ---
 
+## Step 20 — Stats Service (DONE)
+
+**File:** `api/app/services/stats_service.py` (new)
+
+`get_layer_stats(shard_db, layer_id, json_schema)`:
+- Redis check `stats:{layer_id}` (60s TTL)
+- Total count via partition-friendly `WHERE layer_id = ... AND deleted_at IS NULL`
+- Geometry-type breakdown `GROUP BY ST_GeometryType(geom)`
+- BBox via `ST_Envelope(ST_Collect(geom))`
+- Per-field stats from `json_schema["fields"]`:
+  - `number` → MIN/MAX/AVG (cast to numeric) + null_count
+  - `boolean` → true/false/null counts
+  - `string`/other → null_count + unique_count + top 10 values
+- Per-field exceptions are caught and reported as `{"type": …, "error": …}` so a single bad field doesn't tank the response.
+
+Stats cache invalidation already wired in features.py via `_invalidate_after_mutation`.
+
+## Step 21 — Stats endpoint (DONE)
+
+**File:** `api/app/routers/layers.py`
+
+`GET /layers/{id}/stats` — `can_user_do(read)`, loads `LayerSchema.json_schema` and delegates to `stats_service.get_layer_stats`.
+
+---
+
 ## How to run the migrations
 
 ```powershell

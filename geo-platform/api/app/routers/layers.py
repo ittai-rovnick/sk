@@ -26,7 +26,7 @@ from app.schemas.layers import (
 )
 from app.services.feature_filter import compile_expression
 from app.services.storage_service import upload_lyrx
-from app.services import version_service, export_service
+from app.services import version_service, export_service, stats_service
 
 logger = logging.getLogger(__name__)
 
@@ -355,6 +355,24 @@ async def update_layer_schema(
     await db.commit()
     await db.refresh(obj)
     return {"layer_id": obj.layer_id, "json_schema": obj.json_schema, "schema_version": obj.schema_version}
+
+
+@router.get("/{layer_id}/stats")
+async def get_layer_stats_endpoint(
+    layer_id: uuid.UUID,
+    db: AsyncSession = Depends(get_meta_db),
+    ctx: RequestContext = Depends(get_current_user),
+):
+    if not await can_user_do(db, ctx, str(layer_id), "read"):
+        raise HTTPException(status_code=403, detail="Read permission required")
+    layer = await _get_layer(db, layer_id)
+    schema_res = await db.execute(
+        select(LayerSchema).where(LayerSchema.layer_id == layer_id)
+    )
+    schema_obj = schema_res.scalar_one_or_none()
+    json_schema = schema_obj.json_schema if schema_obj else None
+    async with shard_sessions[layer.shard_id]() as shard_db:
+        return await stats_service.get_layer_stats(shard_db, layer_id, json_schema)
 
 
 FORMAT_MEDIA = {
