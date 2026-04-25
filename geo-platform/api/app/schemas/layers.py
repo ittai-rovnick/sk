@@ -1,7 +1,7 @@
 import uuid
 from datetime import datetime
 from typing import Any, Literal
-from pydantic import BaseModel
+from pydantic import BaseModel, field_validator
 
 
 ALLOWED_GEOMETRY_TYPES: frozenset[str] = frozenset({
@@ -88,6 +88,15 @@ class LayerResponse(BaseModel):
     updated_at: datetime
 
     model_config = {"from_attributes": True}
+
+    @field_validator("bbox", mode="before")
+    @classmethod
+    def _coerce_bbox(cls, v):
+        # geoalchemy2 returns a WKBElement here; the live extent value must be
+        # populated separately by the caller (or computed via ST_X/Y queries).
+        if v is None or isinstance(v, list):
+            return v
+        return None
 
 
 class LockRequest(BaseModel):

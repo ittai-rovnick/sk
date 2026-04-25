@@ -8,6 +8,7 @@ from sqlalchemy import select, text
 
 from app.dependencies import get_meta_db, get_current_user
 from app.auth.models import RequestContext
+from app.cache import cache_delete
 from app.models.groups import MsGroup, CustomGroupMember, CustomGroupMsLink
 from app.models.users import User
 from app.config import settings
@@ -414,6 +415,7 @@ async def add_member(
     )
     db.add(member)
     await db.commit()
+    await cache_delete(f"groups:{body.user_id}")
     return {"group_id": str(group_id), "user_id": str(body.user_id)}
 
 
@@ -437,6 +439,7 @@ async def remove_member(
         raise HTTPException(status_code=404, detail="Member not found")
     await db.delete(obj)
     await db.commit()
+    await cache_delete(f"groups:{user_id}")
 
 
 # ── Microsoft group links ──────────────────────────────────────────────────────

@@ -276,6 +276,22 @@ Endpoints registered (all gated by `can_user_do(map_id, op)`):
 
 ---
 
+## Step 17 — Layer router: identify, expressions, versions (DONE)
+
+**File:** `api/app/routers/layers.py` (rewritten)
+**File:** `api/app/routers/groups.py` (cache invalidation wired)
+**File:** `api/app/schemas/layers.py` (bbox coercion validator added)
+
+- `POST /layers/identify` — registered FIRST (before `/{layer_id}` routes). Validates GeoJSON type ∈ `GEOJSON_GEOMETRY_TYPES`, filters layers to `can_user_do(read)`, runs one COUNT(*) GROUP BY layer_id per shard with parameterized polygon, builds tree using `group_layer_id` (existing folder system, not map groups), returns `LayerIdentifyResponse`.
+- `update_layer()` now records a version (LAYER_VERSION_FIELDS whitelist, in-tx) when whitelisted fields change, sets `updated_by`.
+- Expression CRUD: `POST/GET/GET/{eid}/PUT/DELETE /layers/{id}/expressions`. Calls `compile_expression(...)` against schema fields; raises 400 on invalid DSL. PUT/DELETE bust `expr:{eid}` Redis key.
+- Version endpoints: `GET /layers/{id}/versions`, `GET /layers/{id}/versions/{v}`, `POST /layers/{id}/versions/{v}/restore`.
+- `LayerResponse.bbox` field validator coerces non-list (e.g. WKBElement) values to `None` so geoalchemy2's Geometry attribute doesn't break Pydantic serialization. Live extent values are populated separately when needed.
+
+`groups.py`: `add_member` and `remove_member` now `cache_delete(f"groups:{user_id}")` so the next auth check rebuilds the cached membership list.
+
+---
+
 ## How to run the migrations
 
 ```powershell
