@@ -1,12 +1,13 @@
-import { useState, useEffect, useRef, useCallback } from "react";
+import { useState, useEffect, useRef, useCallback, useMemo } from "react";
 import {
   Select, Typography, Button, Tooltip, Space, Spin, message,
-  List, Tag, Divider, Modal, Form, Input,
+  Tag, Divider, Modal, Form, Input, Empty, Card, Badge, Alert,
 } from "antd";
 import {
-  EyeOutlined, EyeInvisibleOutlined, EditOutlined,
+  EyeOutlined,
   SaveOutlined, CloseOutlined, PlusOutlined,
   TableOutlined, SettingOutlined,
+  AimOutlined, EnvironmentOutlined,
 } from "@ant-design/icons";
 import maplibregl from "maplibre-gl";
 import {
@@ -19,7 +20,14 @@ import {
 import { TerraDrawMapLibreGLAdapter } from "terra-draw-maplibre-gl-adapter";
 import "maplibre-gl/dist/maplibre-gl.css";
 import client from "../api/client";
-import type { GeoDatabase, Layer } from "../types";
+import { mapsApi } from "../api/maps";
+import { layers as layersApi } from "../api/layers";
+import type {
+  GeoDatabase, GeoMap, Layer,
+  MapTreeNode, MapLayerNode,
+  IdentifyTreeNode, IdentifyLayerNode, IdentifyGroupNode,
+} from "../types";
+import { MapGroupTree } from "../components/maps/MapGroupTree";
 import { SchemaEditor } from "../components/layers/SchemaEditor";
 import { AttributeTable } from "../components/layers/AttributeTable";
 
@@ -33,15 +41,15 @@ interface ApiFeature {
   version: number;
 }
 
-interface LayerState {
-  layer: Layer;
+interface LayerRender {
+  layerId: string;
+  name: string;
   color: string;
-  visible: boolean;
   features: ApiFeature[];
-  loaded: boolean;
 }
 
 type DrawMode = "select" | "point" | "linestring" | "polygon";
+type Mode = "view" | "edit" | "identify";
 
 // ── Constants ──────────────────────────────────────────────────────────────────
 
@@ -68,19 +76,26 @@ function geomToMode(type: GeoJSON.Geometry["type"]): "point" | "linestring" | "p
 function toDrawFeatures(features: ApiFeature[]): import("terra-draw").GeoJSONStoreFeatures[] {
   const out: import("terra-draw").GeoJSONStoreFeatures[] = [];
   for (const f of features) {
-    const mode = geomToMode(f.geom.type);
-    if (!mode) continue; // terra-draw v1 only supports Point/LineString/Polygon
+    const m = geomToMode(f.geom.type);
+    if (!m) continue;
     out.push({
       type: "Feature",
       geometry: f.geom as import("terra-draw").GeoJSONStoreGeometries,
-      properties: {
-        _api_id: f.id,
-        _api_version: f.version,
-        mode,
-        ...f.properties,
-      },
+      properties: { _api_id: f.id, _api_version: f.version, mode: m, ...f.properties },
     });
   }
+  return out;
+}
+
+function flattenTreeLayers(tree: MapTreeNode[]): MapLayerNode[] {
+  const out: MapLayerNode[] = [];
+  function recurse(nodes: MapTreeNode[]) {
+    for (const n of nodes) {
+      if (n.type === "layer") out.push(n);
+      else recurse(n.children);
+    }
+  }
+  recurse(tree);
   return out;
 }
 
@@ -91,18 +106,40 @@ export function MapPage() {
   const mapRef = useRef<maplibregl.Map | null>(null);
   const drawRef = useRef<TerraDraw | null>(null);
 
+  // Database / map selection
   const [databases, setDatabases] = useState<GeoDatabase[]>([]);
   const [selectedDb, setSelectedDb] = useState<string>("");
-  const [layerStates, setLayerStates] = useState<LayerState[]>([]);
-  const [loadingLayers, setLoadingLayers] = useState(false);
+  const [maps, setMaps] = useState<GeoMap[]>([]);
+  const [selectedMap, setSelectedMap] = useState<string>("");
+  const [mapMeta, setMapMeta] = useState<GeoMap | null>(null);
+  const [mapTree, setMapTree] = useState<MapTreeNode[]>([]);
+  const [loadingMap, setLoadingMap] = useState(false);
+  const [autoFitDoneFor, setAutoFitDoneFor] = useState<string>("");
+
+  // Layer rendering on map
+  const [layerRenders, setLayerRenders] = useState<Record<string, LayerRender>>({});
+  const layerRendersRef = useRef<Record<string, LayerRender>>({});
+  layerRendersRef.current = layerRenders;
+
+  // Edit mode
   const [editingLayerId, setEditingLayerId] = useState<string | null>(null);
   const [drawMode, setDrawMode] = useState<DrawMode>("select");
-  const [mapReady, setMapReady] = useState(false);
-  const [saving, setSaving] = useState(false);
   const [hasChanges, setHasChanges] = useState(false);
+  const [saving, setSaving] = useState(false);
+  const originalFeaturesRef = useRef<ApiFeature[]>([]);
+
+  // Identify mode
+  const [mode, setMode] = useState<Mode>("view");
+  const [identifyResults, setIdentifyResults] = useState<IdentifyTreeNode[] | null>(null);
+  const [identifyBusy, setIdentifyBusy] = useState(false);
+
+  // Map runtime
+  const [mapReady, setMapReady] = useState(false);
+
+  // Modals / overlays
   const [newLayerOpen, setNewLayerOpen] = useState(false);
   const [creatingLayer, setCreatingLayer] = useState(false);
-  const [newLayerForm] = Form.useForm();
+  const [newLayerForm] = Form.useForm<{ name: string }>();
   const [schemaLayerId, setSchemaLayerId] = useState<string | null>(null);
   const [openTableIds, setOpenTableIds] = useState<string[]>([]);
   const [activeTableId, setActiveTableId] = useState<string | null>(null);
@@ -112,33 +149,104 @@ export function MapPage() {
   const tableDragStartY = useRef(0);
   const tableDragStartH = useRef(0);
 
-  const originalFeaturesRef = useRef<ApiFeature[]>([]);
-
   // ── Load databases ──────────────────────────────────────────────────────────
   useEffect(() => {
     client.get<GeoDatabase[]>("/databases").then((r) => setDatabases(r.data));
   }, []);
 
-  // ── Load layers when DB selected ────────────────────────────────────────────
+  // ── Load maps for selected DB ──────────────────────────────────────────────
   useEffect(() => {
-    if (!selectedDb) return;
-    setLoadingLayers(true);
-    setLayerStates([]);
-    setEditingLayerId(null);
-    client.get<Layer[]>(`/layers?database_id=${selectedDb}`)
-      .then((r) => {
-        setLayerStates(
-          r.data.map((layer, i) => ({
-            layer,
-            color: COLORS[i % COLORS.length],
-            visible: false,
-            features: [],
-            loaded: false,
-          }))
-        );
-      })
-      .finally(() => setLoadingLayers(false));
+    if (!selectedDb) { setMaps([]); setSelectedMap(""); return; }
+    mapsApi.list(selectedDb).then((rows) => {
+      setMaps(rows);
+      // Auto-select first map for convenience
+      if (rows.length > 0 && !rows.find((m) => m.id === selectedMap)) {
+        setSelectedMap(rows[0].id);
+      } else if (rows.length === 0) {
+        setSelectedMap("");
+      }
+    }).catch(() => setMaps([]));
   }, [selectedDb]);
+
+  // ── Load map tree when selectedMap changes ──────────────────────────────────
+  const loadMapData = useCallback(async () => {
+    if (!selectedMap) { setMapMeta(null); setMapTree([]); return; }
+    setLoadingMap(true);
+    try {
+      const res = await mapsApi.open(selectedMap);
+      if (res.status === 200) {
+        setMapMeta(res.data.map);
+        setMapTree(res.data.tree);
+      }
+    } catch {
+      message.error("Failed to load map");
+    } finally {
+      setLoadingMap(false);
+    }
+  }, [selectedMap]);
+
+  useEffect(() => { loadMapData(); }, [loadMapData]);
+
+  // ── Auto-fitBounds when extent is set (once per map) ───────────────────────
+  useEffect(() => {
+    if (!mapReady || !mapMeta || !mapMeta.extent) return;
+    if (autoFitDoneFor === mapMeta.id) return;
+    try {
+      mapRef.current?.fitBounds(
+        [[mapMeta.extent[0], mapMeta.extent[1]], [mapMeta.extent[2], mapMeta.extent[3]]],
+        { padding: 60, maxZoom: 14, animate: false }
+      );
+      setAutoFitDoneFor(mapMeta.id);
+    } catch {
+      // ignore degenerate envelopes
+    }
+  }, [mapMeta, mapReady, autoFitDoneFor]);
+
+  // ── Reconcile layer renders with the map tree's visible layers ─────────────
+  const flatLayers = useMemo(() => flattenTreeLayers(mapTree), [mapTree]);
+
+  useEffect(() => {
+    // For visible layers not yet loaded, fetch them. For invisible loaded
+    // layers, drop them so we redraw the map without their features.
+    const visibleIds = new Set(flatLayers.filter((l) => l.is_visible).map((l) => l.layer_id));
+    const current = layerRendersRef.current;
+
+    // Drop invisible
+    const next: Record<string, LayerRender> = {};
+    for (const [lid, render] of Object.entries(current)) {
+      if (visibleIds.has(lid)) next[lid] = render;
+    }
+    let changed = Object.keys(next).length !== Object.keys(current).length;
+
+    // Fetch missing (visible but not yet loaded)
+    const toFetch = flatLayers.filter((l) => l.is_visible && !current[l.layer_id]);
+    if (toFetch.length === 0) {
+      if (changed) setLayerRenders(next);
+      return;
+    }
+
+    let cancelled = false;
+    Promise.all(
+      toFetch.map((l, i) =>
+        client.get<ApiFeature[]>(`/layers/${l.layer_id}/features?limit=5000`)
+          .then((r) => ({ layer: l, features: r.data, idx: i }))
+          .catch(() => ({ layer: l, features: [], idx: i }))
+      )
+    ).then((results) => {
+      if (cancelled) return;
+      const final = { ...next };
+      results.forEach(({ layer, features }, i) => {
+        final[layer.layer_id] = {
+          layerId: layer.layer_id,
+          name: layer.name,
+          color: COLORS[(Object.keys(final).length + i) % COLORS.length],
+          features,
+        };
+      });
+      setLayerRenders(final);
+    });
+    return () => { cancelled = true; };
+  }, [flatLayers]);
 
   // ── Init map ────────────────────────────────────────────────────────────────
   useEffect(() => {
@@ -186,25 +294,13 @@ export function MapPage() {
                 },
               },
             }),
-            new TerraDrawPointMode({
-              styles: {
-                pointColor: "#ff0000",
-                pointWidth: 8,
-                pointOutlineColor: "#ffffff",
-                pointOutlineWidth: 2,
-              },
-            }),
-            new TerraDrawLineStringMode({
-              styles: {
-                lineStringColor: "#ff0000",
-                lineStringWidth: 3,
-              },
-            }),
+            new TerraDrawPointMode(),
+            new TerraDrawLineStringMode(),
             new TerraDrawPolygonMode({
               styles: {
-                fillColor: "#ff0000",
-                fillOpacity: 0.3,
-                outlineColor: "#ff0000",
+                fillColor: "#fa541c",
+                fillOpacity: 0.2,
+                outlineColor: "#fa541c",
                 outlineWidth: 2,
               },
             }),
@@ -212,7 +308,22 @@ export function MapPage() {
         });
 
         draw.start();
-        draw.on("change", () => setHasChanges(true));
+        draw.on("change", () => {
+          // hasChanges is only meaningful in edit mode
+          if (editingLayerIdRef.current) setHasChanges(true);
+        });
+
+        // Identify-mode: when polygon drawing finishes, run identify
+        draw.on("finish", async (id) => {
+          if (modeRef.current !== "identify") return;
+          const snapshot = draw.getSnapshot();
+          const feat = snapshot.find((f) => f.id === id);
+          if (!feat || feat.geometry.type !== "Polygon") return;
+          await runIdentify(feat.geometry as GeoJSON.Polygon);
+          // clear the drawn polygon
+          const ids = draw.getSnapshot().map((f) => f.id as string);
+          if (ids.length) draw.removeFeatures(ids);
+        });
 
         drawRef.current = draw;
         setMapReady(true);
@@ -233,30 +344,43 @@ export function MapPage() {
     };
   }, []);
 
+  // refs to give terra-draw callbacks fresh state without re-init
+  const editingLayerIdRef = useRef<string | null>(null);
+  const modeRef = useRef<Mode>("view");
+  useEffect(() => { editingLayerIdRef.current = editingLayerId; }, [editingLayerId]);
+  useEffect(() => { modeRef.current = mode; }, [mode]);
+
   // ── Activate draw mode ──────────────────────────────────────────────────────
   useEffect(() => {
-    if (!mapReady || !drawRef.current || !editingLayerId) return;
-    drawRef.current.setMode(drawMode);
-  }, [drawMode, editingLayerId, mapReady]);
+    if (!mapReady || !drawRef.current) return;
+    if (mode === "edit" && editingLayerId) {
+      drawRef.current.setMode(drawMode);
+    } else if (mode === "identify") {
+      drawRef.current.setMode("polygon");
+    } else {
+      drawRef.current.setMode("select");
+    }
+  }, [drawMode, editingLayerId, mode, mapReady]);
 
-  // ── Sync view layers on map ─────────────────────────────────────────────────
-  const syncViewLayer = useCallback((ls: LayerState) => {
+  // ── Sync rendered layers onto the map ───────────────────────────────────────
+  const syncRender = useCallback((render: LayerRender, hidden = false) => {
     const map = mapRef.current;
     if (!map || !mapReady) return;
-    const sourceId = `layer-${ls.layer.id}`;
+    const sourceId = `layer-${render.layerId}`;
 
-    if (!ls.visible || ls.layer.id === editingLayerId) {
-      if (map.getLayer(`${sourceId}-circle`)) map.removeLayer(`${sourceId}-circle`);
-      if (map.getLayer(`${sourceId}-line`)) map.removeLayer(`${sourceId}-line`);
-      if (map.getLayer(`${sourceId}-fill`)) map.removeLayer(`${sourceId}-fill`);
-      if (map.getLayer(`${sourceId}-outline`)) map.removeLayer(`${sourceId}-outline`);
+    // Remove if hidden or being edited (terra-draw owns the geometry then)
+    if (hidden || render.layerId === editingLayerId) {
+      ["circle", "line", "fill", "outline"].forEach((suf) => {
+        const id = `${sourceId}-${suf}`;
+        if (map.getLayer(id)) map.removeLayer(id);
+      });
       if (map.getSource(sourceId)) map.removeSource(sourceId);
       return;
     }
 
     const geojson: GeoJSON.FeatureCollection = {
       type: "FeatureCollection",
-      features: ls.features.map((f) => ({
+      features: render.features.map((f) => ({
         type: "Feature",
         geometry: f.geom,
         properties: f.properties,
@@ -269,73 +393,164 @@ export function MapPage() {
       map.addSource(sourceId, { type: "geojson", data: geojson });
       map.addLayer({ id: `${sourceId}-circle`, type: "circle", source: sourceId,
         filter: ["==", ["geometry-type"], "Point"],
-        paint: { "circle-radius": 6, "circle-color": ls.color, "circle-stroke-width": 1.5, "circle-stroke-color": "#fff" },
-      });
+        paint: { "circle-radius": 6, "circle-color": render.color, "circle-stroke-width": 1.5, "circle-stroke-color": "#fff" } });
       map.addLayer({ id: `${sourceId}-line`, type: "line", source: sourceId,
         filter: ["in", ["geometry-type"], ["literal", ["LineString", "MultiLineString"]]],
-        paint: { "line-color": ls.color, "line-width": 2 },
-      });
+        paint: { "line-color": render.color, "line-width": 2 } });
       map.addLayer({ id: `${sourceId}-fill`, type: "fill", source: sourceId,
         filter: ["in", ["geometry-type"], ["literal", ["Polygon", "MultiPolygon"]]],
-        paint: { "fill-color": ls.color, "fill-opacity": 0.25 },
-      });
+        paint: { "fill-color": render.color, "fill-opacity": 0.25 } });
       map.addLayer({ id: `${sourceId}-outline`, type: "line", source: sourceId,
         filter: ["in", ["geometry-type"], ["literal", ["Polygon", "MultiPolygon"]]],
-        paint: { "line-color": ls.color, "line-width": 1.5 },
-      });
+        paint: { "line-color": render.color, "line-width": 1.5 } });
     }
   }, [editingLayerId, mapReady]);
 
   useEffect(() => {
     if (!mapReady) return;
-    layerStates.forEach(syncViewLayer);
-  }, [layerStates, syncViewLayer, mapReady]);
+    Object.values(layerRenders).forEach((r) => syncRender(r));
+  }, [layerRenders, syncRender, mapReady]);
 
-  // ── Toggle layer visibility ─────────────────────────────────────────────────
-  async function toggleVisible(layerId: string) {
-    const ls = layerStates.find((l) => l.layer.id === layerId);
-    if (ls && !ls.loaded && !ls.visible) {
-      const res = await client.get<ApiFeature[]>(`/layers/${layerId}/features?limit=5000`);
-      setLayerStates((prev) =>
-        prev.map((l) =>
-          l.layer.id === layerId ? { ...l, features: res.data, loaded: true, visible: true } : l
-        )
-      );
-    } else {
-      setLayerStates((prev) =>
-        prev.map((l) => l.layer.id === layerId ? { ...l, visible: !l.visible } : l)
-      );
+  // ── Identify ────────────────────────────────────────────────────────────────
+  async function runIdentify(polygon: GeoJSON.Polygon) {
+    if (!selectedDb) return;
+    setIdentifyBusy(true);
+    try {
+      const res = await layersApi.identify(selectedDb, polygon);
+      setIdentifyResults(res.tree);
+    } catch {
+      message.error("Identify failed");
+    } finally {
+      setIdentifyBusy(false);
     }
   }
 
-  // ── Start editing ───────────────────────────────────────────────────────────
-  async function startEdit(layerId: string) {
-    // Open the toolbar immediately — don't block on network or map readiness
+  function exitIdentify() {
+    setMode("view");
+    setIdentifyResults(null);
+    const draw = drawRef.current;
+    if (draw) {
+      const ids = draw.getSnapshot().map((f) => f.id as string);
+      if (ids.length) draw.removeFeatures(ids);
+    }
+  }
+
+  function startIdentify() {
+    if (!selectedDb) {
+      message.warning("Select a database first.");
+      return;
+    }
+    if (editingLayerId) stopEdit();
+    setIdentifyResults(null);
+    setMode("identify");
+    message.info("Draw a polygon on the map (double-click to finish).");
+  }
+
+  async function loadIdentifyLayer(layerId: string, name: string, _polygon?: never) {
+    void _polygon;
+    // Try to use the last drawn polygon from the snapshot — but at this point
+    // we already cleared it. Fall back to fetching all features.
+    // Simpler: re-fetch everything for the layer (the spec says load with
+    // spatial filter, but the polygon is gone after identify completes).
+    // We persist the polygon in state to enable spatial-filtered loading.
+    if (!lastIdentifyPolygonRef.current) {
+      message.warning("Polygon expired — please draw again.");
+      return;
+    }
+    try {
+      const res = await client.get<ApiFeature[]>(
+        `/layers/${layerId}/features`,
+        {
+          params: {
+            spatial_op: "intersects",
+            filter_geojson: JSON.stringify(lastIdentifyPolygonRef.current),
+            limit: 5000,
+          },
+        }
+      );
+      const idx = Object.keys(layerRendersRef.current).length;
+      setLayerRenders((prev) => ({
+        ...prev,
+        [layerId]: {
+          layerId,
+          name,
+          color: COLORS[idx % COLORS.length],
+          features: res.data,
+        },
+      }));
+      message.success(`Loaded ${res.data.length} features from "${name}"`);
+    } catch {
+      message.error(`Failed to load "${name}"`);
+    }
+  }
+
+  async function loadAllWithData() {
+    if (!identifyResults) return;
+    const flat: IdentifyLayerNode[] = [];
+    function recurse(nodes: IdentifyTreeNode[]) {
+      for (const n of nodes) {
+        if (n.type === "layer") flat.push(n);
+        else recurse(n.children as unknown as IdentifyTreeNode[]);
+      }
+    }
+    recurse(identifyResults);
+    const withData = flat.filter((l) => l.feature_count_in_area > 0);
+    for (const l of withData) {
+      await loadIdentifyLayer(l.layer_id, l.name);
+    }
+  }
+
+  // Persist the last polygon so Load buttons can use spatial_op
+  const lastIdentifyPolygonRef = useRef<GeoJSON.Polygon | null>(null);
+  // Capture the polygon BEFORE we clear it from terra-draw
+  useEffect(() => {
+    const draw = drawRef.current;
+    if (!draw) return;
+    type FinishId = Parameters<Parameters<TerraDraw["on"]>[1]>[0];
+    const onFinish = async (id: FinishId) => {
+      if (modeRef.current !== "identify") return;
+      const feat = draw.getSnapshot().find((f) => f.id === id);
+      if (feat && feat.geometry.type === "Polygon") {
+        lastIdentifyPolygonRef.current = feat.geometry as GeoJSON.Polygon;
+      }
+    };
+    draw.on("finish", onFinish);
+    return () => { draw.off("finish", onFinish); };
+  }, [mapReady]);
+
+  // ── Edit workflow ───────────────────────────────────────────────────────────
+  async function startEdit(layerId: string, layerName: string) {
+    if (mode === "identify") exitIdentify();
+    setMode("edit");
     setEditingLayerId(layerId);
     setHasChanges(false);
     setDrawMode("select");
     originalFeaturesRef.current = [];
 
     let features: ApiFeature[] = [];
-    const existing = layerStates.find((l) => l.layer.id === layerId);
-    if (existing?.loaded) {
+    const existing = layerRenders[layerId];
+    if (existing) {
       features = existing.features;
     } else {
       try {
         const res = await client.get<ApiFeature[]>(`/layers/${layerId}/features?limit=5000`);
         features = res.data;
-        setLayerStates((prev) =>
-          prev.map((l) =>
-            l.layer.id === layerId ? { ...l, features, loaded: true, visible: true } : l
-          )
-        );
-      } catch (err) {
-        console.error("Failed to load features:", err);
+      } catch {
         message.error("Failed to load features — you can still draw new ones");
       }
     }
 
     originalFeaturesRef.current = features;
+
+    // Make sure the layer is rendered so the user sees what's already there
+    setLayerRenders((prev) => ({
+      ...prev,
+      [layerId]: prev[layerId] ?? {
+        layerId, name: layerName,
+        color: COLORS[Object.keys(prev).length % COLORS.length],
+        features,
+      },
+    }));
 
     const draw = drawRef.current;
     if (!draw) {
@@ -343,11 +558,8 @@ export function MapPage() {
       return;
     }
 
-    // Load existing features into terra-draw
     if (features.length > 0) {
       draw.addFeatures(toDrawFeatures(features));
-
-      // Fit to features
       const coords: [number, number][] = [];
       features.forEach((f) => {
         if (f.geom.type === "Point") coords.push(f.geom.coordinates as [number, number]);
@@ -364,7 +576,6 @@ export function MapPage() {
     }
   }
 
-  // ── Stop editing ────────────────────────────────────────────────────────────
   function stopEdit() {
     const draw = drawRef.current;
     if (draw) {
@@ -372,25 +583,23 @@ export function MapPage() {
       if (ids.length > 0) draw.removeFeatures(ids);
       draw.setMode("select");
     }
+    setMode("view");
     setEditingLayerId(null);
     setDrawMode("select");
     setHasChanges(false);
     originalFeaturesRef.current = [];
   }
 
-  // ── Save ────────────────────────────────────────────────────────────────────
   async function saveEdits() {
     const draw = drawRef.current;
     if (!draw || !editingLayerId) return;
     setSaving(true);
-
     try {
       const snapshot = draw.getSnapshot();
       const originals = originalFeaturesRef.current;
       const drawnApiIds = new Set(
         snapshot.map((f) => f.properties._api_id).filter((id) => id != null)
       );
-
       const creates = snapshot.filter((f) => !f.properties._api_id);
       const updates = snapshot.filter((f) => f.properties._api_id != null);
       const deletes = originals.filter((f) => !drawnApiIds.has(f.id));
@@ -409,31 +618,22 @@ export function MapPage() {
             version: f.properties._api_version,
           })
         ),
-        ...deletes.map((f) =>
-          client.delete(`/layers/${editingLayerId}/features/${f.id}`)
-        ),
+        ...deletes.map((f) => client.delete(`/layers/${editingLayerId}/features/${f.id}`)),
       ]);
-
       message.success(`Saved: ${creates.length} created, ${updates.length} updated, ${deletes.length} deleted`);
 
-      // Reload features and layer metadata (geometry_types may have changed)
-      const [featRes, layerRes] = await Promise.all([
-        client.get<ApiFeature[]>(`/layers/${editingLayerId}/features?limit=5000`),
-        client.get<Layer>(`/layers/${editingLayerId}`),
-      ]);
+      const featRes = await client.get<ApiFeature[]>(`/layers/${editingLayerId}/features?limit=5000`);
       originalFeaturesRef.current = featRes.data;
-
-      // Refresh draw with new IDs/versions
       const ids = draw.getSnapshot().map((f) => f.id as string);
       if (ids.length) draw.removeFeatures(ids);
       draw.addFeatures(toDrawFeatures(featRes.data));
-
-      setLayerStates((prev) =>
-        prev.map((l) => l.layer.id === editingLayerId
-          ? { ...l, features: featRes.data, layer: layerRes.data }
-          : l)
-      );
+      setLayerRenders((prev) => ({
+        ...prev,
+        [editingLayerId]: { ...(prev[editingLayerId] ?? { layerId: editingLayerId, name: editingLayerId, color: COLORS[0] }), features: featRes.data },
+      }));
       setHasChanges(false);
+      // Refresh the tree (geometry_types may have changed)
+      loadMapData();
     } catch {
       message.error("Save failed — check for version conflicts and try again");
     } finally {
@@ -441,7 +641,7 @@ export function MapPage() {
     }
   }
 
-  // ── Table panel drag-to-resize ───────────────────────────────────────────────
+  // ── Table panel drag-to-resize ─────────────────────────────────────────────
   useEffect(() => {
     function onMouseMove(e: MouseEvent) {
       if (!tableDragging.current) return;
@@ -472,18 +672,14 @@ export function MapPage() {
     document.body.style.cursor = "ns-resize";
     document.body.style.userSelect = "none";
   }
-
   function closeTab(id: string) {
     setOpenTableIds((prev) => prev.filter((x) => x !== id));
-    setActiveTableId((prev) => {
-      if (prev !== id) return prev;
-      const remaining = openTableIds.filter((x) => x !== id);
-      return remaining.length > 0 ? remaining[remaining.length - 1] : null;
-    });
+    setActiveTableId((prev) => (prev !== id ? prev : openTableIds.filter((x) => x !== id).slice(-1)[0] ?? null));
   }
 
-  // ── Create layer ────────────────────────────────────────────────────────────
+  // ── Create layer (adds to current map root) ─────────────────────────────────
   async function createLayer(values: { name: string }) {
+    if (!selectedDb) return;
     setCreatingLayer(true);
     try {
       const res = await client.post<Layer>("/layers", {
@@ -491,13 +687,18 @@ export function MapPage() {
         database_id: selectedDb,
         srid: 4326,
       });
-      setLayerStates((prev) => [
-        ...prev,
-        { layer: res.data, color: COLORS[prev.length % COLORS.length], visible: false, features: [], loaded: true },
-      ]);
+      // If a map is selected, attach the new layer to its root
+      if (selectedMap) {
+        try {
+          await mapsApi.addLayer(selectedMap, { layer_id: res.data.id });
+        } catch {
+          message.warning(`Layer created but couldn't attach to map`);
+        }
+      }
       message.success(`Layer "${res.data.name}" created`);
       setNewLayerOpen(false);
       newLayerForm.resetFields();
+      loadMapData();
     } catch {
       message.error("Failed to create layer");
     } finally {
@@ -505,9 +706,20 @@ export function MapPage() {
     }
   }
 
-  // ── Render ──────────────────────────────────────────────────────────────────
+  // ── Per-layer click → start edit ────────────────────────────────────────────
+  function handleLayerClick(node: MapLayerNode) {
+    if (mode === "identify") return;
+    if (editingLayerId === node.layer_id) {
+      stopEdit();
+    } else {
+      startEdit(node.layer_id, node.name);
+    }
+  }
 
-  const editingLayer = layerStates.find((l) => l.layer.id === editingLayerId);
+  // ── Render ─────────────────────────────────────────────────────────────────
+  const editingLayerNode = editingLayerId
+    ? flatLayers.find((l) => l.layer_id === editingLayerId)
+    : null;
 
   const modeButtons: { mode: DrawMode; label: string }[] = [
     { mode: "select", label: "Select" },
@@ -518,148 +730,145 @@ export function MapPage() {
 
   return (
     <div style={{ display: "flex", height: "calc(100vh - 64px)" }}>
-
       {/* ── Left panel ── */}
       <div style={{
-        width: 260, flexShrink: 0, background: "#fafafa",
+        width: 320, flexShrink: 0, background: "#fafafa",
         borderRight: "1px solid #f0f0f0", display: "flex",
-        flexDirection: "column", padding: "16px 12px", overflowY: "auto",
+        flexDirection: "column", padding: "12px 12px", overflowY: "auto",
       }}>
-        <Typography.Text strong style={{ marginBottom: 8, display: "block" }}>Database</Typography.Text>
+        <Typography.Text strong style={{ marginBottom: 4, display: "block" }}>Database</Typography.Text>
         <Select
           placeholder="Select database"
-          style={{ width: "100%", marginBottom: 16 }}
+          style={{ width: "100%", marginBottom: 8 }}
           value={selectedDb || undefined}
           options={databases.map((d) => ({ value: d.id, label: d.name }))}
-          onChange={(v) => setSelectedDb(v)}
+          onChange={(v) => { setSelectedDb(v); exitIdentify(); }}
         />
 
-        {loadingLayers && <Spin size="small" />}
-
-        {(layerStates.length > 0 || selectedDb) && (
+        {selectedDb && (
           <>
-            <Space style={{ width: "100%", justifyContent: "space-between", marginBottom: 8 }}>
-              <Typography.Text strong>Layers</Typography.Text>
-              {selectedDb && (
-                <Tooltip title="New layer">
-                  <Button size="small" icon={<PlusOutlined />} onClick={() => setNewLayerOpen(true)} />
-                </Tooltip>
-              )}
-            </Space>
-
-            <List
-              size="small"
-              dataSource={layerStates}
-              renderItem={(ls) => {
-                const isEditing = ls.layer.id === editingLayerId;
-                return (
-                  <List.Item style={{ padding: "6px 4px", background: isEditing ? "#e6f4ff" : undefined, borderRadius: 4 }}>
-                    <Space style={{ width: "100%", justifyContent: "space-between" }}>
-                      <Space direction="vertical" size={0} style={{ flex: 1, minWidth: 0 }}>
-                        <Space>
-                          <span style={{ width: 10, height: 10, borderRadius: "50%", background: ls.color, display: "inline-block", flexShrink: 0 }} />
-                          <Typography.Text ellipsis style={{ maxWidth: 110, fontSize: 13 }} title={ls.layer.name}>
-                            {ls.layer.name}
-                          </Typography.Text>
-                        </Space>
-                        <Space style={{ marginLeft: 18 }} size={2} wrap>
-                          {ls.layer.geometry_types?.length
-                            ? ls.layer.geometry_types.map((t) => (
-                                <Tag key={t} style={{ fontSize: 10 }} color="default">{t}</Tag>
-                              ))
-                            : <Tag style={{ fontSize: 10 }} color="default">empty</Tag>
-                          }
-                        </Space>
-                      </Space>
-                      <Space size={4}>
-                        <Tooltip title={ls.visible ? "Hide" : "Show"}>
-                          <Button type="text" size="small"
-                            icon={ls.visible ? <EyeOutlined /> : <EyeInvisibleOutlined />}
-                            onClick={() => toggleVisible(ls.layer.id)}
-                            disabled={isEditing}
-                          />
-                        </Tooltip>
-                        <Tooltip title="Attribute table">
-                          <Button type="text" size="small"
-                            icon={<TableOutlined />}
-                            onClick={() => {
-                              setOpenTableIds((prev) => prev.includes(ls.layer.id) ? prev : [...prev, ls.layer.id]);
-                              setActiveTableId(ls.layer.id);
-                            }}
-                          />
-                        </Tooltip>
-                        <Tooltip title="Fields">
-                          <Button type="text" size="small"
-                            icon={<SettingOutlined />}
-                            onClick={() => setSchemaLayerId(ls.layer.id)}
-                          />
-                        </Tooltip>
-                        <Tooltip title={isEditing ? "Stop editing" : "Edit"}>
-                          <Button
-                            type={isEditing ? "primary" : "text"}
-                            size="small"
-                            icon={isEditing ? <CloseOutlined /> : <EditOutlined />}
-                            onClick={() => isEditing ? stopEdit() : startEdit(ls.layer.id)}
-                            disabled={!!editingLayerId && !isEditing}
-                          />
-                        </Tooltip>
-                      </Space>
-                    </Space>
-                  </List.Item>
-                );
-              }}
-            />
+            <Typography.Text strong style={{ marginBottom: 4, display: "block" }}>Map</Typography.Text>
+            {maps.length === 0 ? (
+              <Alert
+                type="info"
+                showIcon
+                style={{ marginBottom: 8 }}
+                message="No maps in this database"
+                description="Create one from the Maps page."
+              />
+            ) : (
+              <Select
+                placeholder="Select map"
+                style={{ width: "100%", marginBottom: 8 }}
+                value={selectedMap || undefined}
+                options={maps.map((m) => ({ value: m.id, label: m.name }))}
+                onChange={(v) => { setSelectedMap(v); setIdentifyResults(null); setEditingLayerId(null); }}
+              />
+            )}
           </>
+        )}
+
+        {selectedMap && (
+          <Space style={{ marginBottom: 8, marginTop: 4 }} wrap>
+            <Tooltip title="New layer (added to this map)">
+              <Button size="small" icon={<PlusOutlined />} onClick={() => setNewLayerOpen(true)}>New layer</Button>
+            </Tooltip>
+            <Tooltip title="Identify by polygon">
+              <Button
+                size="small"
+                type={mode === "identify" ? "primary" : "default"}
+                icon={<AimOutlined />}
+                onClick={mode === "identify" ? exitIdentify : startIdentify}
+              >
+                {mode === "identify" ? "Exit identify" : "Identify"}
+              </Button>
+            </Tooltip>
+          </Space>
+        )}
+
+        {loadingMap && <Spin size="small" />}
+
+        {/* Identify results panel — shown in place of the tree */}
+        {identifyResults !== null && (
+          <Card size="small" style={{ marginBottom: 12 }} title="Identify results">
+            {identifyBusy && <Spin size="small" />}
+            {!identifyBusy && (
+              <>
+                <Space style={{ marginBottom: 8 }}>
+                  <Button size="small" type="primary" onClick={loadAllWithData}>
+                    Load all with data
+                  </Button>
+                  <Button size="small" onClick={() => setIdentifyResults(null)}>Clear</Button>
+                </Space>
+                <IdentifyResultsTree
+                  tree={identifyResults}
+                  onLoad={(l) => loadIdentifyLayer(l.layer_id, l.name)}
+                />
+              </>
+            )}
+          </Card>
+        )}
+
+        {/* Map tree — hidden when identify results are showing */}
+        {selectedMap && identifyResults === null && !loadingMap && (
+          <MapGroupTree
+            tree={mapTree}
+            mapId={selectedMap}
+            onRefresh={loadMapData}
+            onLayerClick={handleLayerClick}
+          />
+        )}
+
+        {!selectedMap && selectedDb && maps.length > 0 && (
+          <Empty description="Pick a map" style={{ marginTop: 24 }} />
         )}
 
         {editingLayerId && (
           <>
             <Divider style={{ margin: "12px 0" }} />
             <Typography.Text type="secondary" style={{ fontSize: 12, display: "block", marginBottom: 8 }}>
-              Editing: <strong>{editingLayer?.layer.name}</strong>
+              Editing: <strong>{editingLayerNode?.name}</strong>
             </Typography.Text>
-
-            {/* Draw mode toolbar */}
             <Space wrap style={{ marginBottom: 12 }}>
-              {modeButtons.map(({ mode, label }) => (
+              {modeButtons.map(({ mode: m, label }) => (
                 <Button
-                  key={mode}
-                  size="small"
-                  type={drawMode === mode ? "primary" : "default"}
-                  onClick={() => setDrawMode(mode)}
+                  key={m} size="small"
+                  type={drawMode === m ? "primary" : "default"}
+                  onClick={() => setDrawMode(m)}
                 >
                   {label}
                 </Button>
               ))}
             </Space>
-
-            {drawMode !== "select" && (
-              <Typography.Text type="secondary" style={{ fontSize: 11, display: "block", marginBottom: 12 }}>
-                {drawMode === "point" && "Click on the map to place a point."}
-                {drawMode === "linestring" && "Click to add points. Double-click to finish."}
-                {drawMode === "polygon" && "Click to add points. Double-click to close."}
-              </Typography.Text>
-            )}
-            {drawMode === "select" && (
-              <Typography.Text type="secondary" style={{ fontSize: 11, display: "block", marginBottom: 12 }}>
-                Click a feature to select it. Drag to move. Click vertices to edit.
-              </Typography.Text>
-            )}
-
-            <Button
-              type="primary"
-              icon={<SaveOutlined />}
-              block
-              loading={saving}
-              disabled={!hasChanges}
-              onClick={saveEdits}
-            >
-              Save changes
-            </Button>
+            <Space style={{ width: "100%" }} direction="vertical">
+              <Button
+                type="primary" icon={<SaveOutlined />} block
+                loading={saving} disabled={!hasChanges}
+                onClick={saveEdits}
+              >
+                Save changes
+              </Button>
+              <Button block icon={<CloseOutlined />} onClick={stopEdit}>Stop editing</Button>
+            </Space>
             {hasChanges && (
               <Tag color="orange" style={{ marginTop: 8, textAlign: "center", width: "100%" }}>
                 Unsaved changes
               </Tag>
+            )}
+            {editingLayerNode && (
+              <Space style={{ marginTop: 8 }} wrap>
+                <Tooltip title="Attribute table">
+                  <Button size="small" icon={<TableOutlined />}
+                    onClick={() => {
+                      setOpenTableIds((p) => p.includes(editingLayerId) ? p : [...p, editingLayerId]);
+                      setActiveTableId(editingLayerId);
+                    }}
+                  />
+                </Tooltip>
+                <Tooltip title="Fields">
+                  <Button size="small" icon={<SettingOutlined />} onClick={() => setSchemaLayerId(editingLayerId)} />
+                </Tooltip>
+              </Space>
             )}
           </>
         )}
@@ -679,40 +888,37 @@ export function MapPage() {
         </Modal>
       </div>
 
-      {/* ── Map + attribute table column ── */}
+      {/* ── Map + table column ── */}
       <div style={{ flex: 1, display: "flex", flexDirection: "column", overflow: "hidden" }}>
         <div ref={mapContainer} style={{ flex: 1 }} />
 
         {openTableIds.length > 0 && (
-          <div style={{ height: tablePanelHeight, flexShrink: 0, display: "flex", flexDirection: "column", borderTop: "2px solid #d9d9d9", background: "#fff" }}>
-            {/* ── Drag handle ── */}
-            <div
-              onMouseDown={onTableDragStart}
-              style={{
-                height: 6, cursor: "ns-resize", flexShrink: 0,
-                background: "linear-gradient(180deg, #e8e8e8 0%, #f5f5f5 100%)",
-                display: "flex", alignItems: "center", justifyContent: "center",
-              }}
-            >
+          <div style={{
+            height: tablePanelHeight, flexShrink: 0,
+            display: "flex", flexDirection: "column",
+            borderTop: "2px solid #d9d9d9", background: "#fff",
+          }}>
+            <div onMouseDown={onTableDragStart} style={{
+              height: 6, cursor: "ns-resize", flexShrink: 0,
+              background: "linear-gradient(180deg, #e8e8e8 0%, #f5f5f5 100%)",
+              display: "flex", alignItems: "center", justifyContent: "center",
+            }}>
               <div style={{ width: 40, height: 3, borderRadius: 2, background: "#bfbfbf" }} />
             </div>
-
-            {/* ── Tab strip ── */}
             <div style={{
               display: "flex", alignItems: "stretch", borderBottom: "1px solid #f0f0f0",
               flexShrink: 0, background: "#fafafa", overflow: "auto hidden",
             }}>
               {openTableIds.map((id) => {
                 const isActive = id === activeTableId;
-                const name = layerStates.find((l) => l.layer.id === id)?.layer.name ?? "Layer";
+                const name = flatLayers.find((l) => l.layer_id === id)?.name ?? "Layer";
                 return (
                   <div
-                    key={id}
-                    onClick={() => setActiveTableId(id)}
+                    key={id} onClick={() => setActiveTableId(id)}
                     style={{
-                      display: "flex", alignItems: "center", gap: 6,
-                      padding: "4px 12px", cursor: "pointer", whiteSpace: "nowrap",
-                      fontSize: 12, fontWeight: isActive ? 600 : 400,
+                      display: "flex", alignItems: "center", gap: 6, padding: "4px 12px",
+                      cursor: "pointer", whiteSpace: "nowrap", fontSize: 12,
+                      fontWeight: isActive ? 600 : 400,
                       borderBottom: isActive ? "2px solid #1677ff" : "2px solid transparent",
                       background: isActive ? "#fff" : "transparent",
                       color: isActive ? "#1677ff" : "#595959",
@@ -723,36 +929,27 @@ export function MapPage() {
                       onClick={(e) => { e.stopPropagation(); closeTab(id); }}
                       style={{
                         display: "inline-flex", alignItems: "center", justifyContent: "center",
-                        width: 16, height: 16, borderRadius: "50%", fontSize: 10, lineHeight: 1,
-                        color: "#8c8c8c",
+                        width: 16, height: 16, borderRadius: "50%", fontSize: 10, lineHeight: 1, color: "#8c8c8c",
                       }}
-                      onMouseEnter={(e) => { (e.target as HTMLElement).style.background = "#e8e8e8"; }}
-                      onMouseLeave={(e) => { (e.target as HTMLElement).style.background = "transparent"; }}
-                    >
-                      ✕
-                    </span>
+                    >✕</span>
                   </div>
                 );
               })}
             </div>
-
-            {/* ── Table content (all mounted, only active visible) ── */}
             <div style={{ flex: 1, overflow: "hidden", position: "relative" }}>
               {openTableIds.map((id) => (
-                <div
-                  key={id}
-                  style={{
-                    display: id === activeTableId ? "flex" : "none",
-                    flexDirection: "column", height: "100%",
-                  }}
-                >
+                <div key={id} style={{
+                  display: id === activeTableId ? "flex" : "none",
+                  flexDirection: "column", height: "100%",
+                }}>
                   <AttributeTable
                     layerId={id}
                     refreshKey={tableRefreshKey}
                     onFeaturesChanged={() => {
                       client.get<ApiFeature[]>(`/layers/${id}/features?limit=5000`).then((r) => {
-                        setLayerStates((prev) =>
-                          prev.map((l) => l.layer.id === id ? { ...l, features: r.data, loaded: true } : l)
+                        setLayerRenders((prev) => prev[id]
+                          ? { ...prev, [id]: { ...prev[id], features: r.data } }
+                          : prev
                         );
                       });
                     }}
@@ -764,7 +961,6 @@ export function MapPage() {
         )}
       </div>
 
-      {/* ── Schema editor ── */}
       {schemaLayerId && (
         <SchemaEditor
           layerId={schemaLayerId}
@@ -773,6 +969,57 @@ export function MapPage() {
           onSaved={() => setTableRefreshKey((k) => k + 1)}
         />
       )}
+    </div>
+  );
+}
+
+// ── Identify-results sub-tree ──────────────────────────────────────────────────
+
+function IdentifyResultsTree({
+  tree, onLoad,
+}: {
+  tree: IdentifyTreeNode[];
+  onLoad: (l: IdentifyLayerNode) => void;
+}) {
+  function renderLayer(l: IdentifyLayerNode, key: string) {
+    const dim = l.feature_count_in_area === 0;
+    return (
+      <div
+        key={key}
+        style={{ padding: "4px 0", display: "flex", justifyContent: "space-between", alignItems: "center", opacity: dim ? 0.5 : 1 }}
+      >
+        <Space size={6} style={{ flex: 1, minWidth: 0 }}>
+          <EnvironmentOutlined />
+          <span style={{ overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", maxWidth: 140 }} title={l.name}>
+            {l.name}
+          </span>
+          <Badge count={l.feature_count_in_area} style={{ backgroundColor: dim ? "#bfbfbf" : "#1677ff" }} showZero />
+        </Space>
+        <Button size="small" icon={<EyeOutlined />} onClick={() => onLoad(l)} disabled={dim}>Load</Button>
+      </div>
+    );
+  }
+
+  function renderGroup(g: IdentifyGroupNode, key: string) {
+    return (
+      <div key={key} style={{ marginBottom: 6 }}>
+        <Typography.Text strong style={{ fontSize: 12 }}>
+          {g.name} <Tag color="default" style={{ fontSize: 10 }}>{g.features_in_area}</Tag>
+        </Typography.Text>
+        <div style={{ paddingLeft: 12 }}>
+          {g.children.map((l, i) => renderLayer(l, `${key}-${i}`))}
+        </div>
+      </div>
+    );
+  }
+
+  if (tree.length === 0) {
+    return <div style={{ color: "#8c8c8c", fontSize: 12 }}>No accessible layers in this database.</div>;
+  }
+
+  return (
+    <div>
+      {tree.map((n, i) => n.type === "group" ? renderGroup(n, `g-${i}`) : renderLayer(n, `l-${i}`))}
     </div>
   );
 }

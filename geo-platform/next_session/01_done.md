@@ -412,6 +412,25 @@ Props:
 
 ---
 
+## Step 26 — MapPage refactor (DONE)
+
+**File:** `web/src/pages/MapPage.tsx` (rewritten)
+
+Major changes:
+- **Map selector** added below the database selector (`mapsApi.list(databaseId)`). Auto-selects the first map.
+- **`mapsApi.open()`** drives the layer panel — flat layer list replaced with `<MapGroupTree>`.
+- **Auto-fitBounds**: when the loaded map has `extent`, the map zooms to it once per map id (tracked via `autoFitDoneFor` so re-renders don't re-fit on every refresh).
+- **`layerRenders`** state derived from the visible layers in the tree: visible-but-not-loaded layers get fetched in batch; invisible ones are dropped from the source/layers on the map. Editing a layer hides the read-only render so terra-draw owns the geometry.
+- **Identify mode**: "Identify" button switches `mode='identify'` and forces terra-draw to polygon mode. On `finish`, the polygon is captured (`lastIdentifyPolygonRef`), cleared from terra-draw, and posted to `layers.identify(databaseId, polygon)`. Results panel replaces the tree and renders `<IdentifyResultsTree>` (counts as badges, dim 50% on zero, per-layer Load button + "Load all with data"). Load uses `GET /layers/{id}/features?spatial_op=intersects&filter_geojson=...` so only matching features are added to the map.
+- **`mode` ∈ {view, edit, identify}** — single source of truth for terra-draw mode. `editingLayerIdRef` and `modeRef` keep the terra-draw `change`/`finish` callbacks current without re-initializing the instance.
+- **Edit workflow** preserved: clicking a layer name in the tree (`onLayerClick`) toggles edit mode for that layer. Save triggers a tree refresh so updated geometry_types appear.
+- **New layer** still works — when a map is selected, the new layer is automatically attached to the map root via `mapsApi.addLayer`.
+- **Attribute table** + **Schema editor** still accessible as small icons in the edit panel.
+
+`tsc --noEmit` passes.
+
+---
+
 ## How to run the migrations
 
 ```powershell
