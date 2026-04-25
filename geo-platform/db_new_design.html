@@ -323,6 +323,7 @@
   <a href="#api-stats">Stats</a>
   <a href="#api-versions">Versions</a>
   <a href="#api-expressions">Expressions</a>
+  <a href="#api-identify">Identify by Polygon</a>
   <a href="#api-permissions">Permissions</a>
   <a href="#api-users">Users &amp; Groups</a>
   <div class="section-label">Caching</div>
@@ -333,6 +334,11 @@
   <a href="#impl-frontend">Frontend files</a>
   <a href="#impl-order">Step-by-step order</a>
   <a href="#impl-verify">Verification tests</a>
+  <div class="section-label">Identify by Polygon</div>
+  <a href="#identify-concept">Concept</a>
+  <a href="#identify-response">Response shape</a>
+  <a href="#identify-backend">Backend endpoint</a>
+  <a href="#identify-frontend">Frontend mode</a>
 </nav>
 
 <main>
@@ -873,6 +879,33 @@
   <div class="endpoint-row"><span class="endpoint-method"><span class="badge badge-delete">DELETE</span></span><span class="endpoint-path">/layers/{id}/expressions/{eid}</span><span class="endpoint-desc">Delete expression (EDITOR+)</span></div>
 </div>
 
+<h3 id="api-identify">Identify Layers by Polygon</h3>
+<div class="card">
+  <div class="endpoint-row"><span class="endpoint-method"><span class="badge badge-post">POST</span></span><span class="endpoint-path">/layers/identify</span><span class="endpoint-desc">Draw a polygon → returns ALL accessible layers with feature counts inside the polygon. User selects which layers to load. (VIEWER+)</span></div>
+</div>
+<div class="callout callout-warn">
+  <strong>Route ordering critical:</strong> This endpoint MUST be registered BEFORE <code>/{layer_id}</code> routes in the router. FastAPI matches routes in order — "identify" would otherwise be parsed as a UUID path parameter and return 422.
+</div>
+<p><strong>Request body:</strong></p>
+<pre><code>{ <span class="str">"database_id"</span>: <span class="str">"&lt;uuid&gt;"</span>, <span class="str">"geometry"</span>: { <span class="str">"type"</span>: <span class="str">"Polygon"</span>, <span class="str">"coordinates"</span>: [[...]] } }</code></pre>
+<p><strong>Response:</strong> All accessible layers grouped by their <code>group_layer_id</code> folder hierarchy. Each layer shows its <code>feature_count_in_area</code> — which is 0 if the layer has no features inside the polygon (layer still appears). Layers the user cannot read are entirely absent.</p>
+<pre><code>{
+  <span class="str">"tree"</span>: [
+    {
+      <span class="str">"type"</span>: <span class="str">"group"</span>, <span class="str">"id"</span>: <span class="str">"..."</span>, <span class="str">"name"</span>: <span class="str">"Base Layers"</span>, <span class="str">"features_in_area"</span>: <span class="num">42</span>,
+      <span class="str">"children"</span>: [
+        { <span class="str">"type"</span>: <span class="str">"layer"</span>, <span class="str">"layer_id"</span>: <span class="str">"..."</span>, <span class="str">"name"</span>: <span class="str">"Roads"</span>,
+          <span class="str">"feature_count_in_area"</span>: <span class="num">42</span>, <span class="str">"geometry_types"</span>: [<span class="str">"LINESTRING"</span>], <span class="str">"bbox"</span>: [<span class="num">34.0</span>, <span class="num">29.5</span>, <span class="num">36.0</span>, <span class="num">33.5</span>] },
+        { <span class="str">"type"</span>: <span class="str">"layer"</span>, <span class="str">"layer_id"</span>: <span class="str">"..."</span>, <span class="str">"name"</span>: <span class="str">"Topography"</span>,
+          <span class="str">"feature_count_in_area"</span>: <span class="num">0</span>, <span class="str">"geometry_types"</span>: [<span class="str">"POLYGON"</span>], <span class="str">"bbox"</span>: <span class="kw">null</span> }
+      ]
+    },
+    { <span class="str">"type"</span>: <span class="str">"layer"</span>, <span class="str">"layer_id"</span>: <span class="str">"..."</span>, <span class="str">"name"</span>: <span class="str">"Survey Points"</span>,
+      <span class="str">"feature_count_in_area"</span>: <span class="num">8</span>, <span class="str">"geometry_types"</span>: [<span class="str">"POINT"</span>], <span class="str">"bbox"</span>: [<span class="num">34.1</span>, <span class="num">30.0</span>, <span class="num">35.0</span>, <span class="num">31.0</span>] }
+  ]
+}</code></pre>
+<p>After the user clicks "Load" on a layer, the frontend fetches: <code>GET /layers/{id}/features?spatial_op=intersects&amp;filter_geojson={polygon}</code></p>
+
 <h3 id="api-permissions">Permissions</h3>
 <div class="card">
   <div class="endpoint-row"><span class="endpoint-method"><span class="badge badge-post">POST</span></span><span class="endpoint-path">/permissions</span><span class="endpoint-desc">{who_user_id|who_group_id, resource_type, resource_id, role_level} — grant (MANAGER+)</span></div>
@@ -1081,38 +1114,40 @@
 </div>
 
 <h3 id="impl-order">Step-by-Step Implementation Order</h3>
-<p>Steps with no dependencies can be done in parallel; steps that reference earlier steps must wait.</p>
+<p>Steps with no dependencies can be done in parallel; steps that reference earlier steps must wait. <strong style="color:var(--green)">✓ = already committed.</strong></p>
 
 <div class="card">
-  <div class="step-row"><span class="step-num">1</span><div class="step-content"><strong>Migration 007</strong> — maps, map_groups (+ embedded_map_id), map_layers (+ filter_expression), get_map_layer_tree() SQL function, all indexes</div></div>
-  <div class="step-row"><span class="step-num">2</span><div class="step-content"><strong>Migration 008</strong> — resource_type ENUM, resource_versions table, next_resource_version() SQL function</div></div>
-  <div class="step-row"><span class="step-num">3</span><div class="step-content"><strong>Migration 009</strong> — features_updated_at, features_updated_by, updated_by columns on layers + index</div></div>
-  <div class="step-row"><span class="step-num">4</span><div class="step-content"><strong>Migration 010</strong> — saved_expressions table</div></div>
-  <div class="step-row"><span class="step-num">5</span><div class="step-content"><strong>Migration 002f</strong> (features branch) — per-partition stats indexes DO block</div></div>
-  <div class="step-row"><span class="step-num">6</span><div class="step-content"><strong>requirements.txt</strong> — add pyshp, fiona, redis[asyncio]</div></div>
-  <div class="step-row"><span class="step-num">7</span><div class="step-content"><strong>cache.py</strong> — Redis client module (get_redis, cache_get, cache_set, cache_delete, cache_delete_pattern)</div></div>
-  <div class="step-row"><span class="step-num">8</span><div class="step-content"><strong>auth/local.py</strong> — wire cache into _resolve_custom_group_ids() (5-min TTL) and validate_token() last_seen debounce (60s sentinel)</div></div>
-  <div class="step-row"><span class="step-num">9</span><div class="step-content"><strong>layer_geometry.py</strong> — add refresh_layer_bbox() and refresh_layer_feature_stamp(). <span style="color:var(--red)">BUG FIX in features.py</span>: call refresh_layer_feature_stamp() unconditionally; call refresh_layer_bbox() alongside refresh_layer_geometry_types() at all 4 mutation sites</div></div>
-  <div class="step-row"><span class="step-num">10</span><div class="step-content"><strong>schemas/layers.py</strong> — add bbox, features_updated_at, features_updated_by, updated_by to LayerResponse</div></div>
-  <div class="step-row"><span class="step-num">11</span><div class="step-content"><strong>feature_filter.py</strong> — compile_expression() DSL (injection-safe, recursive, depth-limited, allowlist ops)</div></div>
+  <div class="step-row"><span class="step-num" style="background:var(--green)">1</span><div class="step-content"><strong style="color:var(--green)">✓ Migration 007</strong> — maps, map_groups (+ embedded_map_id), map_layers (+ filter_expression), get_map_layer_tree() SQL function, all indexes</div></div>
+  <div class="step-row"><span class="step-num" style="background:var(--green)">2</span><div class="step-content"><strong style="color:var(--green)">✓ Migration 008</strong> — resource_type ENUM, resource_versions table, next_resource_version() SQL function</div></div>
+  <div class="step-row"><span class="step-num" style="background:var(--green)">3</span><div class="step-content"><strong style="color:var(--green)">✓ Migration 009</strong> — features_updated_at, features_updated_by, updated_by columns on layers + index</div></div>
+  <div class="step-row"><span class="step-num" style="background:var(--green)">4</span><div class="step-content"><strong style="color:var(--green)">✓ Migration 010</strong> — saved_expressions table</div></div>
+  <div class="step-row"><span class="step-num" style="background:var(--green)">5</span><div class="step-content"><strong style="color:var(--green)">✓ Migration 002f</strong> (features branch) — per-partition stats indexes DO block</div></div>
+  <div class="step-row"><span class="step-num" style="background:var(--green)">6</span><div class="step-content"><strong style="color:var(--green)">✓ requirements.txt</strong> — add pyshp, fiona, redis[asyncio]</div></div>
+  <div class="step-row"><span class="step-num" style="background:var(--green)">7</span><div class="step-content"><strong style="color:var(--green)">✓ cache.py</strong> — Redis client module (get_redis, cache_get, cache_set, cache_delete, cache_sadd, cache_smembers)</div></div>
+  <div class="step-row"><span class="step-num" style="background:var(--green)">8</span><div class="step-content"><strong style="color:var(--green)">✓ auth/local.py</strong> — wire cache into _resolve_custom_group_ids() (5-min TTL) and validate_token() last_seen debounce (60s sentinel)</div></div>
+  <div class="step-row"><span class="step-num" style="background:var(--green)">9</span><div class="step-content"><strong style="color:var(--green)">✓ layer_geometry.py + features.py bug fix</strong> — add refresh_layer_bbox() and refresh_layer_feature_stamp(). Bug fix: call refresh_layer_feature_stamp() unconditionally (not just on geom changes); call refresh_layer_bbox() at all 4 mutation sites</div></div>
+  <div class="step-row"><span class="step-num" style="background:var(--green)">10</span><div class="step-content"><strong style="color:var(--green)">✓ schemas/layers.py</strong> — add bbox, features_updated_at, features_updated_by, updated_by to LayerResponse; add identify/version/expression schemas</div></div>
+  <div class="step-row"><span class="step-num" style="background:var(--green)">11</span><div class="step-content"><strong style="color:var(--green)">✓ feature_filter.py</strong> — compile_expression() DSL (injection-safe, recursive, depth-limited, allowlist ops)</div></div>
   <div class="step-row"><span class="step-num">12</span><div class="step-content"><strong>features.py</strong> — add zoom, srid, spatial_op, filter_geojson, filter_distance_m, expression_id, expression params to list_features()</div></div>
-  <div class="step-row"><span class="step-num">13</span><div class="step-content"><strong>models/maps.py + models/versions.py</strong> — SQLAlchemy ORM models for all new tables</div></div>
-  <div class="step-row"><span class="step-num">14</span><div class="step-content"><strong>schemas/maps.py + schemas/versions.py</strong> — Pydantic schemas for request/response</div></div>
+  <div class="step-row"><span class="step-num" style="background:var(--green)">13</span><div class="step-content"><strong style="color:var(--green)">✓ models/maps.py + models/versions.py + models/expressions.py</strong> — SQLAlchemy ORM models for all new tables</div></div>
+  <div class="step-row"><span class="step-num">14</span><div class="step-content"><strong>schemas/maps.py</strong> — MapCreate, MapUpdate, MapResponse, MapGroupCreate/Update/Response, MapLayerAdd/Update/Response, MapOpenResponse, MapFreshnessResponse, GroupPermissionGrantRequest/Response</div></div>
   <div class="step-row"><span class="step-num">15</span><div class="step-content"><strong>services/map_service.py</strong> — full map CRUD + get_map_layer_tree() + embedded map resolution + cycle check + refresh_map_content_for_layer() + layermaps:{layer_id} Redis set + get_map_freshness()</div></div>
   <div class="step-row"><span class="step-num">16</span><div class="step-content"><strong>services/version_service.py</strong> — record_version(), get_versions(), get_version_snapshot(), restore_version()</div></div>
-  <div class="step-row"><span class="step-num">17</span><div class="step-content"><strong>routers/maps.py + main.py</strong> — all map endpoints, ETag on /open, Redis cache on /freshness, include_router</div></div>
-  <div class="step-row"><span class="step-num">18</span><div class="step-content"><strong>routers/layers.py</strong> — version endpoints + record_version() in update_layer(). Also: expression CRUD endpoints.</div></div>
+  <div class="step-row"><span class="step-num">17</span><div class="step-content"><strong>routers/maps.py + main.py</strong> — all map endpoints, ETag on /open, Redis cache on /freshness, include_router. Also: wire asyncio.create_task(refresh_map_content_for_layer()) in features.py after feature mutations.</div></div>
+  <div class="step-row"><span class="step-num">18</span><div class="step-content"><strong>routers/layers.py</strong> — version endpoints + record_version() in update_layer() (same transaction). Also: expression CRUD endpoints. Invalidate expr:{eid} on update/delete.</div></div>
   <div class="step-row"><span class="step-num">19</span><div class="step-content"><strong>services/export_service.py</strong> — geojson/shapefile/gpkg exports. Shapefile + GPKG via asyncio.to_thread().</div></div>
   <div class="step-row"><span class="step-num">20</span><div class="step-content"><strong>routers/layers.py</strong> — /export endpoint with SRID validation against app.state.valid_srids</div></div>
-  <div class="step-row"><span class="step-num">21</span><div class="step-content"><strong>services/stats_service.py</strong> — compute_layer_stats() with Redis caching. Requires step 5 indexes for efficiency.</div></div>
-  <div class="step-row"><span class="step-num">22</span><div class="step-content"><strong>routers/layers.py</strong> — /stats endpoint. Invalidate stats:{layer_id} in features.py after every mutation.</div></div>
-  <div class="step-row"><span class="step-num">23</span><div class="step-content"><strong>main.py lifespan</strong> — load valid_srids frozenset from spatial_ref_sys into app.state on startup</div></div>
-  <div class="step-row"><span class="step-num">24</span><div class="step-content"><strong>Frontend: types/index.ts</strong> — add all new TypeScript interfaces</div></div>
-  <div class="step-row"><span class="step-num">25</span><div class="step-content"><strong>Frontend: api/maps.ts</strong> — all map API calls, export URL builder, stats getter</div></div>
+  <div class="step-row"><span class="step-num">21</span><div class="step-content"><strong>services/stats_service.py</strong> — compute_layer_stats() with Redis caching (stats:{layer_id}, 60s). Requires step 5 indexes. Add cache_delete(stats:{layer_id}) in features.py after every mutation.</div></div>
+  <div class="step-row"><span class="step-num">22</span><div class="step-content"><strong>routers/layers.py</strong> — /stats endpoint</div></div>
+  <div class="step-row"><span class="step-num">23</span><div class="step-content"><strong>main.py lifespan</strong> — load valid_srids frozenset from spatial_ref_sys into app.state.valid_srids on startup</div></div>
+  <div class="step-row"><span class="step-num">24</span><div class="step-content"><strong>Frontend: types/index.ts</strong> — add GeoMap, MapGroup, MapLayerNode, MapGroupNode, MapTreeNode, LayerStats, FieldStat, IdentifyLayerNode, IdentifyGroupNode, IdentifyTreeNode, LayerIdentifyResponse. Update Layer: add bbox, features_updated_at, features_updated_by.</div></div>
+  <div class="step-row"><span class="step-num">25</span><div class="step-content"><strong>Frontend: api/maps.ts</strong> — all map API calls, export URL builder, stats getter. Also add identify() to api/layers.ts.</div></div>
   <div class="step-row"><span class="step-num">26</span><div class="step-content"><strong>Frontend: MapGroupTree.tsx</strong> — recursive tree component with drag-drop, freshness indicator, embedded map nodes</div></div>
   <div class="step-row"><span class="step-num">27</span><div class="step-content"><strong>Frontend: ExpressionBuilder.tsx</strong> — nested AND/OR expression builder with save/load</div></div>
-  <div class="step-row"><span class="step-num">28</span><div class="step-content"><strong>Frontend: MapPage.tsx refactor</strong> — map selector + MapGroupTree + layer picker modal + fitBounds on open</div></div>
-  <div class="step-row"><span class="step-num">29</span><div class="step-content"><strong>Frontend: MapsPage.tsx + LayerDetailPage.tsx</strong> — maps admin page, export/stats/versions on layer detail</div></div>
+  <div class="step-row"><span class="step-num">28</span><div class="step-content"><strong>Frontend: MapPage.tsx refactor</strong> — map selector + MapGroupTree + layer picker modal + fitBounds on open + identify mode (toolbar button, polygon draw, results tree, Load buttons)</div></div>
+  <div class="step-row"><span class="step-num">29</span><div class="step-content"><strong>Frontend: MapsPage.tsx</strong> — maps admin page at /maps-admin + sidebar nav item</div></div>
+  <div class="step-row"><span class="step-num">30</span><div class="step-content"><strong>Frontend: LayerDetailPage.tsx</strong> — export buttons, stats collapsible panel, version history tab with restore button</div></div>
+  <div class="step-row"><span class="step-num">31</span><div class="step-content"><strong>Backend: POST /layers/identify</strong> — register BEFORE /{layer_id} routes. Validates GeoJSON type, filters by permission, groups by shard, single SQL per shard (COUNT + ST_Intersects GROUP BY layer_id), assembles tree from group_layer_id hierarchy. Returns all accessible layers, count=0 for those with no features in polygon.</div></div>
 </div>
 
 <h3 id="impl-verify">Verification Tests (what to check after each step)</h3>
@@ -1140,6 +1175,129 @@
 <div class="callout">
   <strong>ETag test:</strong> GET /maps/{id}/open → note ETag header value. Repeat with If-None-Match → 304. Edit a feature in any layer of the map → wait for fire-and-forget to propagate → next GET /maps/{id}/open returns new ETag.
 </div>
+
+<div class="callout">
+  <strong>After step 31 (identify):</strong> Create 3 layers in a database: Layer A (10 features inside polygon area), Layer B (0 features), Layer C (5 features, in a group folder). POST /layers/identify with polygon → tree contains all 3. A has feature_count_in_area=10, B has feature_count_in_area=0 (still shown, dimmed in UI), C has feature_count_in_area=5. Layers are grouped correctly by group_layer_id. A layer the user cannot read is absent entirely. Click "Load" on Layer A → GET /layers/A/features?spatial_op=intersects&filter_geojson={polygon} → only features inside polygon returned. Click "Load All with Data" → A + C load, B skipped.
+</div>
+
+<!-- ======================================================= SECTION 9: IDENTIFY BY POLYGON -->
+<h2 id="identify">Section 9 — Identify Layers by Polygon</h2>
+
+<h3 id="identify-concept">Concept</h3>
+<p>The user draws a polygon on the map. The system returns <strong>all accessible layers</strong> — including those with zero features in the area — organized in the existing group-layer folder hierarchy. Each layer is annotated with how many features it has inside the polygon. The user then picks which layers to load.</p>
+
+<p>This is distinct from a regular spatial filter: it shows the full picture (including empty layers) so the user knows what data exists in the area, not just what matches. Layers with 0 features are shown dimmed in the UI but are still selectable.</p>
+
+<div class="tree"><span class="node">User draws polygon</span>
+        │
+        ▼
+<span class="node">POST /layers/identify</span>  { database_id, geometry }
+        │
+        ├── Load all non-deleted layers for database
+        ├── Filter to layers user has VIEWER+ on
+        ├── Group by shard_id
+        └── For each shard → one SQL query:
+            SELECT layer_id, COUNT(*)
+            FROM features
+            WHERE layer_id = ANY(:ids)
+              AND deleted_at IS NULL
+              AND ST_Intersects(geom, ST_SetSRID(ST_GeomFromGeoJSON(:geom), 4326))
+            GROUP BY layer_id
+        │
+        ▼
+<span class="node">Assemble tree</span> using group_layer_id folder hierarchy
+        │
+        ▼
+<span class="layer">All accessible layers with feature_count_in_area</span>
+<span class="note">(count=0 for layers with no features inside polygon — still shown)</span></div>
+
+<div class="callout callout-ok">
+  <strong>Why one query per shard, not one per layer:</strong> Using <code>WHERE layer_id = ANY(:ids)</code> with a GROUP BY runs a single query for all layers on the same shard. This is O(shards), not O(layers). For a typical database with 50 layers all on shard 0, this is one query total.
+</div>
+
+<h3 id="identify-response">Response Shape</h3>
+<p>Uses the existing <code>group_layer_id</code> folder system on the Layer model — not map groups. Layers with no group appear at root level. When a <code>map_id</code> param is added in a future version, the map's group tree can be used instead.</p>
+
+<table>
+  <tr><th>Field</th><th>Type</th><th>On</th><th>Purpose</th></tr>
+  <tr><td><code>type</code></td><td><code>"group" | "layer"</code></td><td>both</td><td>Discriminator</td></tr>
+  <tr><td><code>id</code></td><td>UUID</td><td>group</td><td>group_layer ID</td></tr>
+  <tr><td><code>name</code></td><td>string</td><td>both</td><td>Display name</td></tr>
+  <tr><td><code>features_in_area</code></td><td>int</td><td>group</td><td>Sum of all children's feature_count_in_area</td></tr>
+  <tr><td><code>children</code></td><td>list</td><td>group</td><td>Layer nodes (only direct children, no sub-groups)</td></tr>
+  <tr><td><code>layer_id</code></td><td>UUID</td><td>layer</td><td>The layer ID to pass to GET /layers/{id}/features</td></tr>
+  <tr><td><code>feature_count_in_area</code></td><td>int</td><td>layer</td><td>0 if no features in polygon; actual count otherwise</td></tr>
+  <tr><td><code>geometry_types</code></td><td>string[]</td><td>layer</td><td>POINT / LINESTRING / POLYGON etc.</td></tr>
+  <tr><td><code>bbox</code></td><td>float[] | null</td><td>layer</td><td>Whole-layer bbox [lon_min, lat_min, lon_max, lat_max]</td></tr>
+</table>
+
+<h3 id="identify-backend">Backend Implementation Notes</h3>
+
+<div class="callout callout-warn">
+  <strong>Route must come first:</strong> <code>POST /layers/identify</code> must be registered in <code>routers/layers.py</code> BEFORE any <code>@router.get("/{layer_id}/...")</code> or <code>@router.post("/{layer_id}/...")</code> routes. FastAPI matches routes top-to-bottom — if <code>/{layer_id}</code> appears first, the string "identify" is parsed as a UUID and the request fails with 422 before reaching the endpoint.
+</div>
+
+<p><strong>GeoJSON geometry validation:</strong></p>
+<pre><code>GEOJSON_GEOMETRY_TYPES = frozenset({
+    <span class="str">"Point"</span>, <span class="str">"MultiPoint"</span>, <span class="str">"LineString"</span>, <span class="str">"MultiLineString"</span>,
+    <span class="str">"Polygon"</span>, <span class="str">"MultiPolygon"</span>, <span class="str">"GeometryCollection"</span>
+})
+<span class="cm"># Check before any DB access → 400 if geometry.type not in this set</span></code></pre>
+
+<p><strong>Shard query:</strong></p>
+<pre><code><span class="kw">SELECT</span> layer_id::text, <span class="fn">COUNT</span>(*) <span class="kw">AS</span> cnt
+<span class="kw">FROM</span> features
+<span class="kw">WHERE</span> layer_id = <span class="fn">ANY</span>(<span class="fn">CAST</span>(:ids <span class="kw">AS</span> uuid[]))
+  <span class="kw">AND</span> deleted_at <span class="kw">IS NULL</span>
+  <span class="kw">AND</span> <span class="fn">ST_Intersects</span>(geom, <span class="fn">ST_SetSRID</span>(<span class="fn">ST_GeomFromGeoJSON</span>(:geom), <span class="num">4326</span>))
+<span class="kw">GROUP BY</span> layer_id</code></pre>
+
+<p>Layers not in the COUNT result get <code>feature_count_in_area = 0</code> — they still appear in the response. PostGIS parse errors are caught and re-raised as 400 with a clear message.</p>
+
+<h3 id="identify-frontend">Frontend Identify Mode</h3>
+<p>The identify mode lives in <code>MapPage.tsx</code> and reuses the existing terra-draw polygon mode:</p>
+
+<div class="flow">
+  <div class="flow-step">User clicks "Identify" toolbar button</div>
+  <div class="flow-arrow">→</div>
+  <div class="flow-step">terra-draw switches to polygon mode</div>
+  <div class="flow-arrow">→</div>
+  <div class="flow-step">"Search Layers" button appears; user draws polygon and clicks it</div>
+  <div class="flow-arrow">→</div>
+  <div class="flow-step">POST /layers/identify with polygon geometry</div>
+  <div class="flow-arrow">→</div>
+  <div class="flow-step">Results tree panel replaces normal layer list</div>
+</div>
+
+<p><strong>Results panel behavior:</strong></p>
+<ul>
+  <li>Header: "Area Search" + total feature count + "×" to exit identify mode</li>
+  <li>Group nodes: folder icon, name, badge with total features in area (blue if &gt; 0, gray if 0)</li>
+  <li>Layer nodes: geometry icon, name, feature count badge, "Load" button</li>
+  <li>Layers with <code>feature_count_in_area === 0</code>: shown at 50% opacity — still visible and loadable</li>
+  <li><strong>"Load" button:</strong> calls <code>GET /layers/{id}/features?spatial_op=intersects&amp;filter_geojson={encodeURIComponent(JSON.stringify(polygon))}</code> and adds results to map</li>
+  <li><strong>"Load All with Data" button:</strong> loads every layer with count &gt; 0 in one click</li>
+  <li>Loaded layers show "Loaded ✓" instead of "Load" button</li>
+</ul>
+
+<p><strong>New TypeScript interfaces required (add to types/index.ts):</strong></p>
+<pre><code><span class="kw">export interface</span> <span class="ty">IdentifyLayerNode</span> {
+  type: <span class="str">'layer'</span>; layer_id: string; name: string;
+  feature_count_in_area: number; geometry_types: string[];
+  bbox: [number, number, number, number] | <span class="kw">null</span>;
+}
+<span class="kw">export interface</span> <span class="ty">IdentifyGroupNode</span> {
+  type: <span class="str">'group'</span>; id: string; name: string;
+  features_in_area: number; children: <span class="ty">IdentifyLayerNode</span>[];
+}
+<span class="kw">export type</span> <span class="ty">IdentifyTreeNode</span> = <span class="ty">IdentifyGroupNode</span> | <span class="ty">IdentifyLayerNode</span>;
+<span class="kw">export interface</span> <span class="ty">LayerIdentifyResponse</span> { tree: <span class="ty">IdentifyTreeNode</span>[]; }</code></pre>
+
+<p><strong>New API function (add to api/layers.ts):</strong></p>
+<pre><code><span class="kw">export const</span> <span class="fn">identify</span> = (databaseId: string, geometry: object) =>
+  client.<span class="fn">post</span>&lt;<span class="ty">LayerIdentifyResponse</span>&gt;(<span class="str">'/layers/identify'</span>, {
+    database_id: databaseId, geometry
+  }).<span class="fn">then</span>(r => r.data);</code></pre>
 
 </main>
 </body>
