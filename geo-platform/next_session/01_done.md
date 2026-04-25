@@ -362,6 +362,30 @@ Added `bbox`, `features_updated_at`, `features_updated_by` to `Layer`. New inter
 
 ---
 
+## Step 24 — MapGroupTree component (DONE)
+
+**File:** `web/src/components/maps/MapGroupTree.tsx` (new)
+
+- Recursive AntD `<Tree>` renderer over `MapTreeNode[]` from `mapsApi.open(...).tree`.
+- Layer nodes: geometry-typed icon (point=blue / line=green / polygon=orange / fallback=grey), name (clickable when `onLayerClick` provided, dimmed when hidden), eye toggle (`mapsApi.updateLayer({ is_visible })`), Export dropdown (GeoJSON/Shapefile/GeoPackage via `downloadLayerExport` so the Bearer header is included), more menu (Remove from map).
+- Group nodes: folder icon, kebab menu (Add sub-group, Rename, Grant permissions [if `onGrantPermissions` provided], Delete). Embedded maps surface a purple "embedded" tag.
+- Modals for Rename / Add sub-group (top-level via the "Add group" button at the top).
+- Drag-and-drop: dragging a layer onto a group reparents (`updateLayer({ group_id })`); dragging between siblings sets `group_id` to that level's parent. Group reparent isn't wired — toast says use the menu.
+- TypeScript build passes (`tsc --noEmit` clean).
+
+Props:
+```ts
+{
+  tree: MapTreeNode[];
+  mapId: string;
+  onRefresh: () => void;
+  onGrantPermissions?: (groupId: string, groupName: string) => void;
+  onLayerClick?: (node: MapLayerNode) => void;
+}
+```
+
+---
+
 ## How to run the migrations
 
 ```powershell
