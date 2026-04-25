@@ -1,0 +1,144 @@
+You are continuing implementation of the geo-platform project. Everything you need is already in the repo — read the files below before writing a single line of code.
+
+== START HERE ==
+
+1. Read geo-platform/next_session/README.md          — project overview, how to start the system
+2. Read geo-platform/next_session/01_done.md          — what is already implemented (do NOT redo any of this)
+3. Read geo-platform/next_session/02_todo.md          — every remaining step, in order, with exact file paths, function signatures, and SQL to copy-paste
+4. Read geo-platform/next_session/03_architecture.md  — design rules you must follow (fire-and-forget pattern, Redis cache keys, injection-safe DSL, Windows rules)
+5. Read geo-platform/CLAUDE.md                        — full project context (tech stack, all existing endpoints, critical rules)
+
+The full design doc with SQL, API shapes, and rationale is at:
+   geo-platform/db_new_design.html  (open in a browser — it has a navigation sidebar)
+   geo-platform/in-the-map-object-rustling-planet.md  (raw plan, very detailed)
+
+== WHAT IS DONE (committed, do not redo) ==
+
+Steps 1-11 and 13 are complete:
+- Migrations 007-010 (meta branch): maps, map_groups, map_layers, resource_versions, change-tracking columns, saved_expressions
+- Migration 002f (features branch): per-partition stats indexes
+- api/app/cache.py                   Redis helper module
+- api/app/auth/local.py              group membership Redis cache + last_seen debounce
+- api/app/services/layer_geometry.py refresh_layer_bbox() + refresh_layer_feature_stamp()
+- api/app/routers/features.py        bug fix (property-only edits now stamp features_updated_at) + bbox calls
+- api/app/schemas/layers.py          bbox/features_updated fields + identify/version/expression schemas
+- api/app/services/feature_filter.py compile_expression() DSL compiler
+- api/app/models/maps.py             Map, MapGroup, MapLayer ORM models
+- api/app/models/versions.py         ResourceVersion ORM model
+- api/app/models/expressions.py      SavedExpression ORM model
+- api/requirements.txt               pyshp, fiona, redis[asyncio] added
+
+MIGRATIONS HAVE NOT BEEN RUN YET. Run them before testing anything:
+   cd geo-platform\api
+   venv\Scripts\alembic -x db=meta upgrade meta@head
+   venv\Scripts\alembic -x db=features upgrade features@head
+
+== WHAT TO IMPLEMENT NEXT (in order) ==
+
+Step 12  — api/app/routers/features.py
+           Add to list_features(): spatial_op, filter_geojson, filter_distance_m,
+           expression_id, expression, zoom, srid query params.
+           Also add: await cache_delete(f"stats:{layer_id}") after every feature mutation.
+
+Step 13  — api/app/schemas/maps.py  (new file)
+           MapCreate, MapUpdate, MapResponse, MapGroupCreate, MapGroupUpdate,
+           MapGroupResponse, MapLayerAdd, MapLayerUpdate, MapLayerResponse,
+           MapLayerNode, MapGroupNode, MapOpenResponse, MapFreshnessResponse,
+           GroupPermissionGrantRequest, GroupPermissionGrantResponse
+
+Step 14  — api/app/services/map_service.py  (new file)
+           create_map, update_map, delete_map, get_map_layer_tree (SQL fn + tree assembly),
+           create_map_group (cycle check), update_map_group, delete_map_group,
+           add_layer_to_map (update layermaps:{layer_id} Redis set),
+           remove_layer_from_map, update_map_layer, refresh_map_extent,
+           refresh_map_content_for_layer (fire-and-forget, bumps content_version),
+           get_map_freshness, expand_group_layers, _check_embed_cycle
+
+Step 15  — api/app/services/version_service.py  (new file)
+           record_version (calls next_resource_version() in same transaction),
+           get_versions, get_version, restore_version
+
+Step 16  — api/app/routers/maps.py  (new file) + update api/app/main.py
+           All map endpoints: CRUD, /open (ETag), /freshness (Redis 30s),
+           group CRUD, layer add/remove/update, bulk group permission grant,
+           version endpoints.
+           main.py: app.include_router(maps.router) + load valid_srids frozenset at startup.
+           Also wire: asyncio.create_task(refresh_map_content_for_layer(...)) in features.py.
+
+Step 17  — api/app/routers/layers.py
+           Add: version endpoints (GET/GET/{v}/POST restore) + record_version in update_layer.
+           Add: expression CRUD (POST/GET/GET/{eid}/PUT/DELETE /layers/{id}/expressions).
+           Add: POST /layers/identify — MUST be before any /{layer_id} route.
+
+Step 18  — api/app/services/export_service.py  (new file)
+           export_geojson, export_shapefile (pyshp via asyncio.to_thread),
+           export_gpkg (fiona via asyncio.to_thread)
+
+Step 19  — api/app/routers/layers.py
+           Add: GET /layers/{id}/export?format=geojson|shapefile|gpkg&srid=
+
+Step 20  — api/app/services/stats_service.py  (new file)
+           get_layer_stats: Redis check (stats:{layer_id}, 60s), then compute
+           count + geometry breakdown + per-field stats (string/number/boolean)
+
+Step 21  — api/app/routers/layers.py
+           Add: GET /layers/{id}/stats
+
+Step 22  — Frontend: web/src/types/index.ts
+           Add: GeoMap, MapGroup, MapLayerNode, MapGroupNode, MapTreeNode,
+           LayerStats, FieldStat, IdentifyLayerNode, IdentifyGroupNode,
+           IdentifyTreeNode, LayerIdentifyResponse.
+           Update Layer: add bbox, features_updated_at, features_updated_by.
+
+Step 23  — Frontend: web/src/api/maps.ts  (new file)
+           All map CRUD + group CRUD + layer add/remove/update + bulk permission grant
+           + layerExportUrl() + layerStatsApi.get().
+           Also add identify() to web/src/api/layers.ts.
+
+Step 24  — Frontend: web/src/components/maps/MapGroupTree.tsx  (new file)
+           Recursive Ant Design tree. Group nodes: folder icon, expand/collapse,
+           kebab menu (Add sub-group, Rename, Delete, Grant permissions).
+           Layer nodes: geometry icon, visibility eye toggle (PUT /maps/{id}/layers/{lid}),
+           Export dropdown (layerExportUrl). Drag-and-drop reorder.
+
+Step 25  — Frontend: web/src/components/maps/ExpressionBuilder.tsx  (new file)
+           Nested AND/OR builder. Field/op/value selectors (op adapts to field type).
+           "Save as..." → POST /layers/{id}/expressions.
+           "Load saved" → list expressions, apply on select.
+
+Step 26  — Frontend: web/src/pages/MapPage.tsx  (major refactor)
+           Add map selector (GET /maps?database_id=).
+           Replace flat layer list with MapGroupTree from GET /maps/{id}/open.
+           Auto-fitBounds when map.extent is non-null.
+           Add identify mode: toolbar button → polygon draw → POST /layers/identify
+           → results tree panel (feature counts, Load buttons, Load All with Data).
+
+Step 27  — Frontend: web/src/pages/MapsPage.tsx  (new file)
+           List/create/rename/delete maps. Route: /maps-admin.
+           Add to web/src/App.tsx and web/src/components/Sidebar.tsx.
+
+Step 28  — Frontend: web/src/pages/LayerDetailPage.tsx
+           Add: Export buttons (GeoJSON/Shapefile/GeoPackage via layerExportUrl).
+           Add: Stats collapsible panel (feature count, geometry type pills, field stats table).
+           Add: Version history tab (list, snapshot view, restore button).
+
+== KEY RULES (read 03_architecture.md for full details) ==
+
+- Fire-and-forget: all refresh_* functions use try/except, never re-raise
+- Redis: always import from app.cache — never import redis directly
+- SQL injection: compile_expression() puts field names as VALUES to properties->>:f_N, never interpolated
+- Shard DB: raw text() SQL only — no ORM — always include layer_id in WHERE
+- record_version() must be called in the SAME transaction as the UPDATE it records
+- POST /layers/identify must be registered BEFORE /{layer_id} routes (FastAPI route order)
+- asyncio.to_thread() for pyshp and fiona (both are sync libs)
+- No React Query — plain axios + useState/useEffect
+- terra-draw (not @mapbox/mapbox-gl-draw) for map drawing
+- Windows: use venv\Scripts\python, WindowsSelectorEventLoopPolicy already set
+
+== HOW TO RUN ==
+
+  docker compose up -d                           (from geo-platform/)
+  venv\Scripts\python run.py                     (from geo-platform/api/)
+  npm run dev                                    (from geo-platform/web/)
+  http://localhost:8000/docs                     (Swagger UI)
+  http://localhost:5173                          (Web app)
