@@ -4,7 +4,7 @@ import uuid
 from collections import defaultdict
 from datetime import datetime, timezone
 from typing import List, Optional
-from fastapi import APIRouter, Depends, HTTPException, UploadFile, File, status
+from fastapi import APIRouter, Depends, HTTPException, Request, Response, UploadFile, File, status
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select, text
 
@@ -26,7 +26,7 @@ from app.schemas.layers import (
 )
 from app.services.feature_filter import compile_expression
 from app.services.storage_service import upload_lyrx
-from app.services import version_service
+from app.services import version_service, export_service
 
 logger = logging.getLogger(__name__)
 
@@ -355,6 +355,52 @@ async def update_layer_schema(
     await db.commit()
     await db.refresh(obj)
     return {"layer_id": obj.layer_id, "json_schema": obj.json_schema, "schema_version": obj.schema_version}
+
+
+FORMAT_MEDIA = {
+    "geojson":   ("application/geo+json", "geojson"),
+    "shapefile": ("application/zip",      "zip"),
+    "gpkg":      ("application/geopackage+sqlite3", "gpkg"),
+}
+
+
+@router.get("/{layer_id}/export")
+async def export_layer(
+    layer_id: uuid.UUID,
+    request: Request,
+    format: str = "geojson",
+    srid: int | None = None,
+    db: AsyncSession = Depends(get_meta_db),
+    ctx: RequestContext = Depends(get_current_user),
+):
+    if format not in FORMAT_MEDIA:
+        raise HTTPException(
+            status_code=400,
+            detail=f"Unsupported format: {format}. Allowed: {sorted(FORMAT_MEDIA)}",
+        )
+    if not await can_user_do(db, ctx, str(layer_id), "export"):
+        raise HTTPException(status_code=403, detail="Export permission required")
+    layer = await _get_layer(db, layer_id)
+
+    target_srid = srid if srid is not None else 4326
+    if srid is not None and not export_service.validate_srid(request.app.state, srid):
+        raise HTTPException(status_code=400, detail=f"Unknown SRID: {srid}")
+
+    async with shard_sessions[layer.shard_id]() as shard_db:
+        if format == "geojson":
+            payload = await export_service.export_geojson(shard_db, layer, target_srid)
+        elif format == "shapefile":
+            payload = await export_service.export_shapefile(shard_db, db, layer, target_srid)
+        else:
+            payload = await export_service.export_gpkg(shard_db, db, layer, target_srid)
+
+    media_type, ext = FORMAT_MEDIA[format]
+    safe_name = (layer.name or "layer").replace('"', "").replace("/", "_").replace("\\", "_")
+    return Response(
+        content=payload,
+        media_type=media_type,
+        headers={"Content-Disposition": f'attachment; filename="{safe_name}.{ext}"'},
+    )
 
 
 @router.post("/{layer_id}/lyrx")

@@ -292,6 +292,24 @@ Endpoints registered (all gated by `can_user_do(map_id, op)`):
 
 ---
 
+## Step 18 — Export Service (DONE)
+
+**File:** `api/app/services/export_service.py` (new)
+**File:** `api/requirements.txt` (added `shapely==2.0.6`)
+
+- `export_geojson(shard_db, layer, target_srid)` — builds FeatureCollection with `crs.name = urn:ogc:def:crs:EPSG::{srid}`, returns bytes.
+- `export_shapefile(shard_db, meta_db, layer, target_srid)` — uses pyshp via `asyncio.to_thread`. Field names truncated to 10 chars (with dedup suffix). Geometry parsed via shapely from `ST_AsBinary(ST_Transform(geom, srid))`. Writes .shp/.shx/.dbf/.prj into a tempdir, zips them, returns the .zip bytes. Schema fields read from `LayerSchema`; falls back to first feature's properties.
+- `export_gpkg(shard_db, meta_db, layer, target_srid)` — uses fiona with `'GPKG'` driver via `asyncio.to_thread`. Writes to a tempfile, returns its bytes.
+- `validate_srid(app_state, srid)` — checks against `app.state.valid_srids` (returns True if unset).
+
+## Step 19 — Export endpoint (DONE)
+
+**File:** `api/app/routers/layers.py`
+
+`GET /layers/{id}/export?format=geojson|shapefile|gpkg&srid=<int>` — `can_user_do(export)`, validates SRID via `request.app.state.valid_srids`, returns `Response` with `Content-Disposition: attachment` and matching media type (`application/geo+json`, `application/zip`, `application/geopackage+sqlite3`). Default SRID = 4326.
+
+---
+
 ## How to run the migrations
 
 ```powershell
