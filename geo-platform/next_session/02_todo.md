@@ -22,6 +22,31 @@ The full design spec (schema tables, API shapes, permission model, caching, DSL)
 ## ~~Step 25 — ExpressionBuilder component~~ ✅ DONE
 ## ~~Step 26 — MapPage refactor (map selector, MapGroupTree, fitBounds, identify mode)~~ ✅ DONE
 ## ~~Step 27 — MapsPage admin + /maps-admin route + sidebar entry~~ ✅ DONE
+## ~~Step 28 — LayerDetailPage additions (Export, Stats, Versions tabs)~~ ✅ DONE
+
+---
+
+# 🎉 All 28 steps complete.
+
+## What's left to do (pre-runtime)
+
+1. **Run alembic migrations** (have not been run yet):
+   ```powershell
+   cd geo-platform\api
+   venv\Scripts\alembic -x db=meta upgrade meta@head
+   venv\Scripts\alembic -x db=features upgrade features@head
+   ```
+2. **Pull new Python deps** (`shapely==2.0.6` was added):
+   ```powershell
+   cd geo-platform\api
+   venv\Scripts\pip install -r requirements.txt
+   ```
+3. **Smoke test**:
+   - `venv\Scripts\python run.py` — confirm http://localhost:8000/health returns ok
+   - http://localhost:8000/docs — verify new endpoints are registered (look for `/maps`, `/maps/{id}/open`, `/layers/identify`, `/layers/{id}/export`, `/layers/{id}/stats`, expression / version routes)
+   - `npm run dev` — open http://localhost:5173
+   - Walk through: pick database → pick map (or create one in /maps-admin) → toggle layer visibility → identify by polygon → export
+   - Edit a layer → save → verify a new version row appears in `/layers/{id}/versions`
 
 ---
 

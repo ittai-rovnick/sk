@@ -442,6 +442,27 @@ Major changes:
 
 ---
 
+## Step 28 — LayerDetailPage additions (DONE)
+
+**File:** `web/src/pages/LayerDetailPage.tsx` (rewritten)
+
+- **Top-bar Export dropdown** — GeoJSON / Shapefile / GeoPackage via `downloadLayerExport` (auth blob download).
+- **fitBounds** prefers `layer.bbox` (now exposed by the API) and falls back to feature coords.
+- **Tabs** — Map / Stats / Versions. Stats and Versions are lazy-loaded on tab activation.
+- **StatsPanel** — total feature count, geometry-type counts as colored tags, and a per-field stats table inside a `<Collapse>` with a custom renderer per type (`string` → nulls/unique/top values; `number` → min/max/avg/nulls; `boolean` → true/false/nulls; `error` variant from the backend renders as a red tag).
+- **VersionsPanel** — table of versions with View / Restore (Popconfirm). View opens a side `<Card>` with the snapshot JSON, changed fields, and timestamp. Restore calls `/versions/{v}/restore` and refreshes the layer + version list.
+- TypeScript: `FieldStat` discriminated union has a fallback `{ type: string; error? }` variant for backend per-field exceptions, which prevents narrowing on `type` alone — explicit `Extract<…>` casts are used per branch with a comment.
+
+`tsc --noEmit` passes.
+
+---
+
+## All 28 steps done.
+
+The full backend + frontend implementation plan is complete. Migrations still need to be run before any of this works at runtime — see "How to run the migrations" below.
+
+---
+
 ## How to run the migrations
 
 ```powershell
