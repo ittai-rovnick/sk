@@ -21,6 +21,7 @@ The full design spec (schema tables, API shapes, permission model, caching, DSL)
 ## ~~Step 24 — MapGroupTree component~~ ✅ DONE  (group reparent via DnD is intentionally not wired — toast directs users to the menu)
 ## ~~Step 25 — ExpressionBuilder component~~ ✅ DONE
 ## ~~Step 26 — MapPage refactor (map selector, MapGroupTree, fitBounds, identify mode)~~ ✅ DONE
+## ~~Step 27 — MapsPage admin + /maps-admin route + sidebar entry~~ ✅ DONE
 
 ---
 

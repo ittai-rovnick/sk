@@ -431,6 +431,17 @@ Major changes:
 
 ---
 
+## Step 27 — MapsPage + route + sidebar (DONE)
+
+**Files:**
+- `web/src/pages/MapsPage.tsx` (new) — table view per database, Create / Rename / Delete (Popconfirm). "Open" button navigates to `/map?map_id=…`. Auto-selects first DB on mount.
+- `web/src/App.tsx` — added `<Route path="/maps-admin" element={<MapsPage />} />`.
+- `web/src/components/layout/Sidebar.tsx` — added "Maps" entry (AppstoreOutlined → `/maps-admin`), kept "Map" (GlobalOutlined → `/map`) for the viewer.
+
+`tsc --noEmit` passes.
+
+---
+
 ## How to run the migrations
 
 ```powershell

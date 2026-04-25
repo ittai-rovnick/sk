@@ -8,6 +8,7 @@ import {
   FileTextOutlined,
   WarningOutlined,
   GlobalOutlined,
+  AppstoreOutlined,
 } from "@ant-design/icons";
 import { useNavigate, useLocation } from "react-router-dom";
 
@@ -17,6 +18,7 @@ const menuItems = [
   { key: "/databases", icon: <DatabaseOutlined />, label: "Databases" },
   { key: "/layers", icon: <ApartmentOutlined />, label: "Layers" },
   { key: "/map", icon: <GlobalOutlined />, label: "Map" },
+  { key: "/maps-admin", icon: <AppstoreOutlined />, label: "Maps" },
   { key: "/permissions", icon: <SafetyOutlined />, label: "Permissions" },
   { key: "/users", icon: <UserOutlined />, label: "Users" },
   { key: "/groups", icon: <TeamOutlined />, label: "Groups" },

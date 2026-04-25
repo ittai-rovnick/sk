@@ -11,6 +11,7 @@ import { GroupsPage } from "./pages/GroupsPage";
 import { AuditLogPage } from "./pages/AuditLogPage";
 import { SyncConflictsPage } from "./pages/SyncConflictsPage";
 import { MapPage } from "./pages/MapPage";
+import { MapsPage } from "./pages/MapsPage";
 import type { ReactNode } from "react";
 
 function RequireAuth({ children }: { children: ReactNode }) {
@@ -42,6 +43,7 @@ export default function App() {
             <Route path="/audit" element={<AuditLogPage />} />
             <Route path="/conflicts" element={<SyncConflictsPage />} />
             <Route path="/map" element={<MapPage />} />
+            <Route path="/maps-admin" element={<MapsPage />} />
           </Route>
         </Routes>
       </BrowserRouter>
