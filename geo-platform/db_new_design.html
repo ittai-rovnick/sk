@@ -296,7 +296,7 @@
   <a href="#db-map-layers">map_layers</a>
   <a href="#db-layers">layers</a>
   <a href="#db-users">users / groups</a>
-  <a href="#db-permissions">resource_permissions</a>
+  <a href="#db-permissions">permissions + roles</a>
   <a href="#db-versions">resource_versions</a>
   <a href="#db-expressions">saved_expressions</a>
   <a href="#db-features">features (shard)</a>
@@ -394,8 +394,12 @@
     ├── <span class="layer">Layer</span>: "Roads"
     └── <span class="layer">Layer</span>: "Topography"</div>
 
+<div class="callout callout-warn">
+  <strong>Naming note — aspirational vs. actual:</strong> The tree above uses the names from the original design doc. In the <strong>live system</strong>: "Workspace" is the <code>geo_databases</code> table; there is <strong>no <code>folders</code> table</strong> — maps belong directly to a database via <code>maps.database_id</code> (not <code>folder_id</code>). The workspace-level folder concept was not implemented; maps are flat within a database. Map-level groups (inside a map) are still the <code>map_groups</code> table.
+</div>
+
 <div class="callout">
-  <strong>Key distinction:</strong> <strong>Folders</strong> are workspace-level organizers for maps. <strong>Map Groups</strong> are inside a map and organize layers within that map. These are two separate tables with different purposes.
+  <strong>Key distinction:</strong> <strong>Map Groups</strong> are inside a map and organize layers within that map (<code>map_groups</code> table). There is no separate workspace-level folder table — maps sit directly under a <code>geo_databases</code> row.
 </div>
 
 <h3 id="ex-permissions">1.2 Where Permissions Are Stored</h3>
@@ -956,7 +960,7 @@
 <!-- ======================================================= SECTION 7: CACHING -->
 <h2 id="caching">Section 7 — Caching Strategy</h2>
 
-<p>Redis is configured but currently unused. The biggest performance win is caching <code>_resolve_custom_group_ids()</code> which runs a recursive CTE on <strong>every authenticated request</strong>.</p>
+<p>Redis is actively used across 7 cache key types (see table below). The highest-traffic win is <code>groups:{user_id}</code> which eliminates the recursive CTE that would otherwise run on <strong>every authenticated request</strong>. All caching is handled through <code>app/services/cache_service.py</code> helpers (<code>cache_get</code>, <code>cache_set</code>, <code>cache_delete</code>, <code>cache_sadd</code>, <code>cache_smembers</code>).</p>
 
 <h3 id="cache-registry">Cache Key Registry</h3>
 <table>
@@ -1127,7 +1131,7 @@
 
 <div class="card">
   <h4>web/src/pages/MapPage.tsx — major refactor</h4>
-  <p>Left sidebar: after database selector add Map selector (GET /maps?workspace_id=). Replace flat layer list with MapGroupTree populated from GET /maps/{id}/open. "Add Group" button. "Manage Layers" button → layer picker modal. Map extent auto-zoom: if map.extent is non-null, call mapInstance.fitBounds(extent) on open.</p>
+  <p>Left sidebar: after database selector add Map selector (GET /maps?database_id=). Replace flat layer list with MapGroupTree populated from GET /maps/{id}/open. "Add Group" button. "Manage Layers" button → layer picker modal. Map extent auto-zoom: if map.extent is non-null, call mapInstance.fitBounds(extent) on open.</p>
 </div>
 
 <div class="card">
@@ -1229,7 +1233,7 @@
 <span class="node">POST /layers/identify</span>  { database_id, geometry }
         │
         ├── Load all non-deleted layers for database
-        ├── Filter to layers user has VIEWER+ on
+        ├── Filter to layers user has can_read permission on
         ├── Group by shard_id
         └── For each shard → one SQL query:
             SELECT layer_id, COUNT(*)
