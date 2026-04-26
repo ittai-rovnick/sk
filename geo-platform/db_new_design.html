@@ -344,7 +344,22 @@
 <main>
 
 <h1>Geo Platform — Full System Design</h1>
-<p class="subtitle">Complete design document covering structure, DB schema, API, and implementation plan. Updated April 2026.</p>
+<p class="subtitle">Complete design document covering structure, DB schema, API, and implementation plan. Updated 2026-04-26.</p>
+
+<div class="callout callout-ok">
+  <strong>Build status: COMPLETE.</strong> All 28 steps of the implementation plan (Section 8) are committed on <code>develop</code> and the live system has been smoke-tested end-to-end. Migrations <code>007–010</code> (meta) + <code>002f</code> (features) applied. All 20 new endpoints registered and verified via Swagger + cURL. See <code>geo-platform/next_session/01_done.md</code> for the per-phase commit log.
+</div>
+
+<div class="callout callout-warn">
+  <strong>Important: this document was written aspirationally before implementation.</strong> Several names below differ from the live code — the build kept the platform's existing primitives (<code>geo_databases</code>, <code>group_layers</code>, <code>permissions</code> + <code>roles</code> with 7 boolean flags) instead of introducing the new <code>workspaces</code>/<code>folders</code>/<code>resource_permissions</code> tables described in the early sections. Where the doc and the code disagree, the code is authoritative and is flagged inline with <strong>(implemented as: …)</strong> notes.
+</div>
+
+<h3>What "implemented as" actually means</h3>
+<ul>
+  <li><strong>Workspace</strong> in this doc → live system uses the existing <code>geo_databases</code> table (one row per "GeoDatabase"). The new <code>maps</code> table FK's to <code>geo_databases(id)</code>, not a new <code>workspaces</code> table.</li>
+  <li><strong>Folders for maps</strong> in this doc → not implemented. Maps live directly under a database. The existing <code>group_layers</code> table is a <em>folder-of-layers</em> hierarchy and is used for the <code>POST /layers/identify</code> response tree.</li>
+  <li><strong>resource_permissions(role_level INT 1–4)</strong> in this doc → live system kept the existing <code>permissions</code> + <code>roles</code> tables. Roles carry 7 boolean flags (<code>can_read</code>, <code>can_write</code>, <code>can_delete</code>, <code>can_export</code>, <code>can_manage_style</code>, <code>can_manage_perms</code>, <code>can_publish</code>); permission rows attach a role to a (user-or-group, scope) pair. <code>can_user_do(...)</code> resolves them. Maps reuse the same function.</li>
+</ul>
 
 <!-- ======================================================= SECTION 1: STRUCTURE EXAMPLES -->
 <h2 id="examples">Section 1 — Structure Examples</h2>
@@ -384,19 +399,19 @@
 </div>
 
 <h3 id="ex-permissions">1.2 Where Permissions Are Stored</h3>
-<p>All permissions go into the <code>resource_permissions</code> table. There is one row per (user/group, resource) pair. There is no permission hierarchy — each row is explicit. Here is what the permission rows would look like for the example above:</p>
+<p>All permissions go into the <code>permissions</code> table (<strong>not</strong> a separate <code>resource_permissions</code> table — that name in the doc is aspirational). One row per (subject, scope) pair. <code>can_user_do()</code> honors three scope columns directly: <code>database_id</code> (cascade), <code>group_layer_id</code> (cascade), <code>layer_id</code> (single). Here is what the permission rows would look like for the example above:</p>
 
 <table>
-  <tr><th>who_user_id / who_group_id</th><th>resource_type</th><th>resource_id</th><th>role_level</th><th>Why this row exists</th></tr>
-  <tr><td class="mono">alice</td><td><code>workspace</code></td><td>Israel Survey Org</td><td><span class="badge badge-admin">ADMIN 4</span></td><td>Alice owns the workspace</td></tr>
-  <tr><td class="mono">bob</td><td><code>map</code></td><td>Northern Survey 2025</td><td><span class="badge badge-editor">EDITOR 2</span></td><td>Bob can edit features in this specific map's layers</td></tr>
-  <tr><td class="mono">field-team (group)</td><td><code>layer</code></td><td>Survey Points</td><td><span class="badge badge-editor">EDITOR 2</span></td><td>All members of field-team can edit survey points</td></tr>
-  <tr><td class="mono">carol</td><td><code>layer</code></td><td>Roads</td><td><span class="badge badge-viewer">VIEWER 1</span></td><td>Carol can read roads but not edit them</td></tr>
-  <tr><td class="mono">dave</td><td><code>map</code></td><td>Shared Base</td><td><span class="badge badge-viewer">VIEWER 1</span></td><td>Dave can open the embedded map when it's referenced</td></tr>
+  <tr><th>ms_user_id / ms_group_id</th><th>scope column</th><th>scope value</th><th>role</th><th>Why this row exists</th></tr>
+  <tr><td class="mono">alice</td><td><code>database_id</code></td><td>Israel Survey Org</td><td><span class="badge badge-admin">admin</span></td><td>Alice owns the GeoDatabase (the platform's top-level container)</td></tr>
+  <tr><td class="mono">bob (per-layer)</td><td><code>layer_id</code></td><td>Survey Points</td><td><span class="badge badge-editor">editor</span></td><td>Bob can edit features in this specific layer (created by the bulk-grant on the map's group)</td></tr>
+  <tr><td class="mono">field-team (group)</td><td><code>layer_id</code></td><td>Survey Points</td><td><span class="badge badge-editor">editor</span></td><td>All members of field-team can edit survey points</td></tr>
+  <tr><td class="mono">carol</td><td><code>layer_id</code></td><td>Roads</td><td><span class="badge badge-viewer">viewer</span></td><td>Carol can read roads but not edit them</td></tr>
+  <tr><td class="mono">dave</td><td><code>group_layer_id</code></td><td>Base Layers folder</td><td><span class="badge badge-viewer">viewer</span></td><td>Dave can read all layers under that folder (cascade)</td></tr>
 </table>
 
 <div class="callout callout-warn">
-  <strong>No cascade at query time.</strong> If Bob is EDITOR on "Northern Survey 2025" (a map), that does NOT automatically make him an editor on its layers. The frontend UI uses <em>group permission grants</em> (<code>POST /maps/{id}/groups/{gid}/permissions</code>) to create individual layer permission rows in bulk — but those rows are still stored individually in <code>resource_permissions</code>.
+  <strong>Map-level permissions live as per-layer rows.</strong> There is no <code>map_id</code> scope column on the live <code>permissions</code> table. The bulk-grant endpoint <code>POST /maps/{id}/groups/{gid}/permissions</code> uses <code>expand_group_layers()</code> to enumerate the map_group's layer_ids and inserts one permission row per layer (with <code>layer_id</code> scope). <code>can_user_do()</code> additionally honors <code>database_id</code> and <code>group_layer_id</code> scope rows as cascading grants.
 </div>
 
 <h3 id="ex-embedded">1.3 Embedded Maps</h3>
@@ -427,40 +442,22 @@
 
 <p>All tables below live in the <strong>geo_meta</strong> database unless marked <em>(shard DB)</em>. The features table lives in <strong>geo_features</strong> and is partitioned. Migrations use Alembic with two independent branches (<code>meta</code> and <code>features</code>).</p>
 
-<h3 id="db-workspaces">workspaces</h3>
-<p>Top-level organizational container. One org typically has one workspace, but the schema supports many.</p>
-<table>
-  <tr><th>Column</th><th>Type</th><th>Purpose</th></tr>
-  <tr><td class="mono">id</td><td><code>UUID PK</code></td><td>Primary key</td></tr>
-  <tr><td class="mono">name</td><td><code>TEXT NOT NULL</code></td><td>Display name, must be unique per org</td></tr>
-  <tr><td class="mono">description</td><td><code>TEXT</code></td><td>Optional description shown in UI</td></tr>
-  <tr><td class="mono">created_by</td><td><code>UUID → users</code></td><td>Who created it (audit trail)</td></tr>
-  <tr><td class="mono">created_at</td><td><code>TIMESTAMPTZ DEFAULT now()</code></td><td>Creation timestamp</td></tr>
-  <tr><td class="mono">updated_at</td><td><code>TIMESTAMPTZ DEFAULT now()</code></td><td>Last metadata change; bumped on name/description update</td></tr>
-  <tr><td class="mono">deleted_at</td><td><code>TIMESTAMPTZ</code></td><td>Soft delete — NULL means active</td></tr>
-</table>
+<h3 id="db-workspaces">workspaces (not implemented)</h3>
+<div class="callout callout-warn">
+  <strong>Not built — superseded by the existing <code>geo_databases</code> table.</strong> The "GeoDatabase" primitive already plays the role of a top-level org container (it has <code>name</code>, <code>description</code>, <code>tags</code>, <code>default_srid</code>, soft delete). All new <code>maps</code>, <code>map_groups</code>, <code>map_layers</code>, and the existing <code>layers</code> + <code>group_layers</code> tables FK to <code>geo_databases(id)</code>. Adding a separate <code>workspaces</code> table on top would have introduced a no-op layer; the live code skipped it.
+</div>
 
-<h3 id="db-folders">folders</h3>
-<p>Organizes maps inside a workspace. Supports nesting (parent_id) so teams can have sub-folders.</p>
-<table>
-  <tr><th>Column</th><th>Type</th><th>Purpose</th></tr>
-  <tr><td class="mono">id</td><td><code>UUID PK</code></td><td>Primary key</td></tr>
-  <tr><td class="mono">workspace_id</td><td><code>UUID → workspaces NOT NULL</code></td><td>Which workspace this folder belongs to</td></tr>
-  <tr><td class="mono">parent_id</td><td><code>UUID → folders</code></td><td>NULL = root folder; non-null = nested inside another folder</td></tr>
-  <tr><td class="mono">name</td><td><code>TEXT NOT NULL</code></td><td>Folder name; unique within (workspace, parent)</td></tr>
-  <tr><td class="mono">sort_order</td><td><code>INT DEFAULT 0</code></td><td>Display order among siblings; lower = first</td></tr>
-  <tr><td class="mono">created_by</td><td><code>UUID → users</code></td><td>Who created the folder</td></tr>
-  <tr><td class="mono">created_at</td><td><code>TIMESTAMPTZ</code></td><td>Creation timestamp</td></tr>
-  <tr><td class="mono">deleted_at</td><td><code>TIMESTAMPTZ</code></td><td>Soft delete</td></tr>
-</table>
+<h3 id="db-folders">folders (not implemented)</h3>
+<div class="callout callout-warn">
+  <strong>Not built — there is no map-folder hierarchy.</strong> Maps live directly under a database. The existing <code>group_layers</code> table is a folder hierarchy <em>for layers</em> (used by the <code>POST /layers/identify</code> response tree to group results), not for maps.
+</div>
 
 <h3 id="db-maps">maps</h3>
-<p>The primary working unit. A map belongs to a workspace (and optionally a folder) and contains an ordered group+layer tree. Maps have two change signals: <em>metadata</em> (name/description changed) and <em>content</em> (layers added/removed/edited).</p>
+<p>The primary working unit. A map belongs to a database (<strong>implemented as:</strong> direct FK to <code>geo_databases</code>; the doc's earlier <code>workspace_id</code> + <code>folder_id</code> design was not built — maps live directly under a database). Maps have two change signals: <em>metadata</em> (name/description changed) and <em>content</em> (layers added/removed/edited).</p>
 <table>
   <tr><th>Column</th><th>Type</th><th>Purpose</th></tr>
   <tr><td class="mono">id</td><td><code>UUID PK</code></td><td>Primary key</td></tr>
-  <tr><td class="mono">workspace_id</td><td><code>UUID → workspaces NOT NULL</code></td><td>Which workspace this map belongs to; required for permission scoping</td></tr>
-  <tr><td class="mono">folder_id</td><td><code>UUID → folders</code></td><td>NULL = root of workspace; non-null = inside a folder</td></tr>
+  <tr><td class="mono">database_id</td><td><code>UUID → geo_databases NOT NULL ON DELETE CASCADE</code></td><td>Which GeoDatabase owns this map. Used for permission scoping at database level — the existing <code>can_user_do()</code> function handles map IDs the same way it handles layer IDs.</td></tr>
   <tr><td class="mono">name</td><td><code>TEXT NOT NULL</code></td><td>Display name</td></tr>
   <tr><td class="mono">description</td><td><code>TEXT</code></td><td>Optional description</td></tr>
   <tr><td class="mono">extent</td><td><code>GEOMETRY(Polygon, 4326)</code></td><td>Union bbox of all member layers; auto-maintained by <code>refresh_map_extent()</code>; used to fitBounds() on open</td></tr>
@@ -548,20 +545,41 @@
   <tr><td class="mono">last_seen_at</td><td><code>TIMESTAMPTZ</code></td><td>Last authenticated request; debounced to 1 write per 60s via Redis sentinel key</td></tr>
 </table>
 
-<h3 id="db-permissions">resource_permissions</h3>
-<p>Central permission table. One row = one (subject, resource, role) grant. No deny rules. MAX(role_level) wins when multiple rows match a user via group membership.</p>
+<h3 id="db-permissions">permissions + roles (implemented as 7-flag roles, not role_level INT)</h3>
+<div class="callout callout-warn">
+  <strong>Live system uses two pre-existing tables, not a single <code>resource_permissions</code> with role_level INT.</strong> Roles are user-defined rows with seven boolean capability flags; permissions attach a role to a (subject, scope) pair. Resolution is via the PostgreSQL function <code>can_user_do(ms_object_id, ms_group_ids, layer_id_or_map_id, operation)</code> — superadmin returns true unconditionally. The function handles both layer and map IDs.
+</div>
+<h4>roles</h4>
 <table>
   <tr><th>Column</th><th>Type</th><th>Purpose</th></tr>
   <tr><td class="mono">id</td><td><code>UUID PK</code></td><td>Primary key</td></tr>
-  <tr><td class="mono">who_user_id</td><td><code>UUID → users</code></td><td>Direct user grant; NULL if this is a group grant</td></tr>
-  <tr><td class="mono">who_group_id</td><td><code>UUID → groups</code></td><td>Group grant; NULL if this is a user grant. Exactly one of these is non-null.</td></tr>
-  <tr><td class="mono">resource_type</td><td><code>TEXT NOT NULL</code></td><td>workspace / folder / map / layer</td></tr>
-  <tr><td class="mono">resource_id</td><td><code>UUID NOT NULL</code></td><td>The specific workspace/folder/map/layer being granted access to</td></tr>
-  <tr><td class="mono">role_level</td><td><code>INT NOT NULL</code></td><td>1=VIEWER, 2=EDITOR, 3=MANAGER, 4=ADMIN. Numeric so MAX() resolves conflicts.</td></tr>
-  <tr><td class="mono">granted_by</td><td><code>UUID → users</code></td><td>Who created this permission row</td></tr>
+  <tr><td class="mono">name</td><td><code>TEXT UNIQUE NOT NULL</code></td><td>Display name (e.g. "viewer", "editor")</td></tr>
+  <tr><td class="mono">description</td><td><code>TEXT</code></td><td>Optional explanation</td></tr>
+  <tr><td class="mono">can_read</td><td><code>BOOLEAN</code></td><td>List/get features and metadata</td></tr>
+  <tr><td class="mono">can_write</td><td><code>BOOLEAN</code></td><td>Create/update features; edit layer metadata</td></tr>
+  <tr><td class="mono">can_delete</td><td><code>BOOLEAN</code></td><td>Delete features; soft-delete layers</td></tr>
+  <tr><td class="mono">can_export</td><td><code>BOOLEAN</code></td><td>Required for <code>GET /layers/{id}/export</code></td></tr>
+  <tr><td class="mono">can_manage_style</td><td><code>BOOLEAN</code></td><td>Upload .lyrx; manage symbology</td></tr>
+  <tr><td class="mono">can_manage_perms</td><td><code>BOOLEAN</code></td><td>Required for <code>POST /maps/{id}/groups/{gid}/permissions</code> bulk grant</td></tr>
+  <tr><td class="mono">can_publish</td><td><code>BOOLEAN</code></td><td>Promote layer status: draft → published</td></tr>
+  <tr><td class="mono">is_system_role</td><td><code>BOOLEAN</code></td><td>Built-in role; cannot be deleted</td></tr>
+</table>
+
+<h4>permissions</h4>
+<table>
+  <tr><th>Column</th><th>Type</th><th>Purpose</th></tr>
+  <tr><td class="mono">id</td><td><code>UUID PK</code></td><td>Primary key</td></tr>
+  <tr><td class="mono">ms_user_id</td><td><code>TEXT</code></td><td>Direct user grant via MS Entra object ID; NULL if this is a group grant</td></tr>
+  <tr><td class="mono">ms_group_id</td><td><code>TEXT</code></td><td>Group grant via MS Entra group ID; NULL if this is a user grant</td></tr>
+  <tr><td class="mono">database_id</td><td><code>UUID → geo_databases</code></td><td>Scope: an entire GeoDatabase (covers all its layers + maps)</td></tr>
+  <tr><td class="mono">group_layer_id</td><td><code>UUID → group_layers</code></td><td>Scope: a layer-folder (covers all layers inside it)</td></tr>
+  <tr><td class="mono">layer_id</td><td><code>UUID → layers</code></td><td>Scope: a single layer (also used for map IDs — see note below)</td></tr>
+  <tr><td class="mono">role_id</td><td><code>UUID → roles NOT NULL</code></td><td>Which role (set of 7 flags) is being granted</td></tr>
+  <tr><td class="mono">allow</td><td><code>BOOLEAN DEFAULT TRUE</code></td><td>If false, this row is an explicit deny. <code>can_user_do()</code> resolves allow vs deny precedence.</td></tr>
+  <tr><td class="mono">granted_by</td><td><code>UUID → users</code></td><td>Who created this row</td></tr>
   <tr><td class="mono">granted_at</td><td><code>TIMESTAMPTZ</code></td><td>When granted</td></tr>
 </table>
-<p><em>Constraint:</em> <code>CHECK ((who_user_id IS NULL) != (who_group_id IS NULL))</code> — exactly one of user/group must be set.</p>
+<p><strong>Map permissions:</strong> the bulk-grant endpoint <code>POST /maps/{id}/groups/{gid}/permissions</code> expands a map_group recursively to its layer_ids and inserts one <code>permissions</code> row per layer (using <code>layer_id</code> scope). There is no <code>map_id</code> scope column — map-level permissions are expressed as the union of permissions on the map's layers.</p>
 
 <h3 id="db-versions">resource_versions</h3>
 <p>Stores the full state snapshot of a resource at each version. <strong>Full snapshots, not diffs</strong> — this means you can view or restore any version in O(1) without replaying N patches.</p>
@@ -616,14 +634,15 @@
 <!-- ======================================================= SECTION 3: PERMISSION SYSTEM -->
 <h2 id="permissions">Section 3 — Permission System</h2>
 
-<h3 id="perm-roles">Role Levels</h3>
+<h3 id="perm-roles">Capability flags (implemented system)</h3>
+<p>Live system uses 7 boolean flags per <code>roles</code> row. The doc's earlier 1–4 numeric ladder was never built. The badges below are the five built-in roles seeded in <code>permissions.py</code> — but any combination of flags is allowed via custom roles.</p>
 <table>
-  <tr><th>Level</th><th>Name</th><th>What they can do</th></tr>
-  <tr><td><span class="badge badge-viewer">1 — VIEWER</span></td><td>Viewer</td><td>Read features, view styles, download exports (if export permission set), open maps</td></tr>
-  <tr><td><span class="badge badge-editor">2 — EDITOR</span></td><td>Editor</td><td>All of VIEWER + create/edit/delete features, upload styles, use expressions</td></tr>
-  <tr><td><span class="badge badge-manager">3 — MANAGER</span></td><td>Manager</td><td>All of EDITOR + grant VIEWER/EDITOR to others, manage layer schema, lock/unlock layers</td></tr>
-  <tr><td><span class="badge badge-admin">4 — ADMIN</span></td><td>Admin</td><td>All of MANAGER + grant MANAGER/ADMIN, delete maps/layers, manage workspace settings</td></tr>
-  <tr><td><span class="badge badge-super">∞</span></td><td>Superadmin</td><td>Global bypass — all checks return true. Set on the User row, not in resource_permissions.</td></tr>
+  <tr><th>Built-in role</th><th>Flags set</th><th>Used for</th></tr>
+  <tr><td><span class="badge badge-viewer">viewer</span></td><td><code>can_read</code></td><td>Read features, open maps, view stats</td></tr>
+  <tr><td><span class="badge badge-editor">editor</span></td><td>+ <code>can_write</code>, <code>can_delete</code>, <code>can_export</code></td><td>Create/edit/delete features; download exports</td></tr>
+  <tr><td><span class="badge badge-manager">manager</span></td><td>+ <code>can_manage_style</code>, <code>can_manage_perms</code></td><td>Upload styles; bulk-grant permissions</td></tr>
+  <tr><td><span class="badge badge-admin">admin</span></td><td>+ <code>can_publish</code></td><td>Promote layers to published</td></tr>
+  <tr><td><span class="badge badge-super">superadmin</span></td><td>n/a</td><td>Global bypass — set on the <code>users.is_superadmin</code> column. <code>can_user_do()</code> short-circuits to true.</td></tr>
 </table>
 
 <h3 id="perm-resolution">Resolution Logic</h3>
@@ -631,20 +650,20 @@
 <div class="flow">
   <div class="flow-step">1. Is user superadmin?<br><em>→ ALLOW</em></div>
   <div class="flow-arrow">→</div>
-  <div class="flow-step">2. Get user's groups<br><em>(Redis cache, then CTE)</em></div>
+  <div class="flow-step">2. Get user's groups<br><em>(Redis <code>groups:{user_id}</code>, then recursive CTE)</em></div>
   <div class="flow-arrow">→</div>
-  <div class="flow-step">3. Query resource_permissions<br><em>WHERE resource_id = ? AND<br>(who_user_id = ? OR who_group_id IN (?))</em></div>
+  <div class="flow-step">3. Call <code>can_user_do(...)</code><br><em>SQL function in geo_meta — single round-trip</em></div>
   <div class="flow-arrow">→</div>
-  <div class="flow-step">4. MAX(role_level) wins<br><em>0 rows → DENY</em></div>
+  <div class="flow-step">4. Function joins permissions ⨝ roles<br><em>Checks the requested flag (read/write/delete/export/...)</em></div>
   <div class="flow-arrow">→</div>
-  <div class="flow-step">5. Compare to required level<br><em>VIEWER=1, EDITOR=2, etc.</em></div>
+  <div class="flow-step">5. <code>allow=false</code> rows win over <code>allow=true</code><br><em>(explicit deny)</em></div>
 </div>
-<p>There is no cascade — a workspace permission does NOT automatically grant access to maps or layers inside it. The frontend uses the bulk-grant helper to create individual rows.</p>
+<p>The function applies cascade rules where present: a permission with <code>database_id</code> set covers all the database's layers; a permission with <code>group_layer_id</code> set covers all layers in that folder. The bulk-grant endpoint <code>POST /maps/{id}/groups/{gid}/permissions</code> expands a map group recursively to its layer_ids and inserts one row per layer (no <code>map_id</code> scope column).</p>
 
 <h3 id="perm-embedded">Embedded Map Permission Logic</h3>
 <p>When resolving <code>GET /maps/{id}/open</code> and a group has <code>embedded_map_id</code> set:</p>
 <ol>
-  <li>Check user has VIEWER+ on the <strong>embedded map</strong> (not the parent map)</li>
+  <li>Check user has read access on the <strong>embedded map</strong> (not the parent map) — i.e., <code>can_user_do(...embedded_map_id..., "read")</code> via the per-layer-or-database scope rows</li>
   <li>If no access → node appears as <code>{"type":"embedded_map","access":false,"children":[]}</code></li>
   <li>If access → recursively resolve the embedded map's tree with the same per-layer permission checks</li>
   <li>Layer-level permissions inside the embedded map are still checked individually — having viewer on the embedded map is only a gate, not a grant on layers</li>
@@ -765,49 +784,54 @@
   <div class="endpoint-row"><span class="endpoint-method"><span class="badge badge-get">GET</span></span><span class="endpoint-path">/auth/me</span><span class="endpoint-desc">Current user from token</span></div>
 </div>
 
-<h3 id="api-workspaces">Workspaces &amp; Folders</h3>
+<h3 id="api-workspaces">Databases &amp; Layer Folders (existing endpoints reused)</h3>
+<div class="callout callout-warn">
+  <strong>The doc's earlier <code>/workspaces</code> + <code>/folders</code> endpoints were never built.</strong> The platform's existing <code>/databases</code> and <code>/group-layers</code> routers fill the same role.
+</div>
 <div class="card">
-  <div class="endpoint-row"><span class="endpoint-method"><span class="badge badge-get">GET</span></span><span class="endpoint-path">/workspaces</span><span class="endpoint-desc">List workspaces user can see (VIEWER+)</span></div>
-  <div class="endpoint-row"><span class="endpoint-method"><span class="badge badge-post">POST</span></span><span class="endpoint-path">/workspaces</span><span class="endpoint-desc">Create workspace (superadmin only)</span></div>
-  <div class="endpoint-row"><span class="endpoint-method"><span class="badge badge-put">PUT</span></span><span class="endpoint-path">/workspaces/{id}</span><span class="endpoint-desc">Update name/description (ADMIN on workspace)</span></div>
-  <div class="endpoint-row"><span class="endpoint-method"><span class="badge badge-delete">DELETE</span></span><span class="endpoint-path">/workspaces/{id}</span><span class="endpoint-desc">Soft delete (superadmin)</span></div>
-  <div class="endpoint-row"><span class="endpoint-method"><span class="badge badge-get">GET</span></span><span class="endpoint-path">/workspaces/{id}/folders</span><span class="endpoint-desc">Full folder tree for workspace</span></div>
-  <div class="endpoint-row"><span class="endpoint-method"><span class="badge badge-post">POST</span></span><span class="endpoint-path">/workspaces/{id}/folders</span><span class="endpoint-desc">Create folder {name, parent_id?, sort_order?} (MANAGER+)</span></div>
-  <div class="endpoint-row"><span class="endpoint-method"><span class="badge badge-put">PUT</span></span><span class="endpoint-path">/folders/{id}</span><span class="endpoint-desc">Rename / reparent / reorder folder (MANAGER+)</span></div>
-  <div class="endpoint-row"><span class="endpoint-method"><span class="badge badge-delete">DELETE</span></span><span class="endpoint-path">/folders/{id}</span><span class="endpoint-desc">Delete folder; maps inside move to folder_id=NULL (MANAGER+)</span></div>
+  <div class="endpoint-row"><span class="endpoint-method"><span class="badge badge-get">GET</span></span><span class="endpoint-path">/databases</span><span class="endpoint-desc">List GeoDatabases the user can see</span></div>
+  <div class="endpoint-row"><span class="endpoint-method"><span class="badge badge-post">POST</span></span><span class="endpoint-path">/databases</span><span class="endpoint-desc">Create GeoDatabase (superadmin)</span></div>
+  <div class="endpoint-row"><span class="endpoint-method"><span class="badge badge-put">PUT</span></span><span class="endpoint-path">/databases/{id}</span><span class="endpoint-desc">Update metadata (superadmin)</span></div>
+  <div class="endpoint-row"><span class="endpoint-method"><span class="badge badge-delete">DELETE</span></span><span class="endpoint-path">/databases/{id}</span><span class="endpoint-desc">Hard delete (cascades to layers, maps, etc.) (superadmin)</span></div>
+  <div class="endpoint-row"><span class="endpoint-method"><span class="badge badge-get">GET</span></span><span class="endpoint-path">/group-layers?database_id=</span><span class="endpoint-desc">List layer-folders for a database (these are folders <em>for layers</em>, not for maps)</span></div>
+  <div class="endpoint-row"><span class="endpoint-method"><span class="badge badge-post">POST</span></span><span class="endpoint-path">/group-layers</span><span class="endpoint-desc">Create layer-folder {database_id, parent_id?, name, sort_order?} (superadmin)</span></div>
+  <div class="endpoint-row"><span class="endpoint-method"><span class="badge badge-put">PUT</span></span><span class="endpoint-path">/group-layers/{id}</span><span class="endpoint-desc">Rename / reparent / reorder (superadmin)</span></div>
+  <div class="endpoint-row"><span class="endpoint-method"><span class="badge badge-delete">DELETE</span></span><span class="endpoint-path">/group-layers/{id}</span><span class="endpoint-desc">Delete folder; layers move to <code>group_layer_id=NULL</code> (superadmin)</span></div>
 </div>
 
 <h3 id="api-maps">Maps</h3>
 <div class="card">
-  <div class="endpoint-row"><span class="endpoint-method"><span class="badge badge-get">GET</span></span><span class="endpoint-path">/maps?workspace_id=&amp;folder_id=</span><span class="endpoint-desc">List maps visible to user (VIEWER+)</span></div>
-  <div class="endpoint-row"><span class="endpoint-method"><span class="badge badge-post">POST</span></span><span class="endpoint-path">/maps</span><span class="endpoint-desc">Create map {name, workspace_id, folder_id?} → creator auto-gets ADMIN</span></div>
-  <div class="endpoint-row"><span class="endpoint-method"><span class="badge badge-get">GET</span></span><span class="endpoint-path">/maps/{id}</span><span class="endpoint-desc">Get map metadata</span></div>
-  <div class="endpoint-row"><span class="endpoint-method"><span class="badge badge-put">PUT</span></span><span class="endpoint-path">/maps/{id}</span><span class="endpoint-desc">Update name/description → records version (MANAGER+)</span></div>
-  <div class="endpoint-row"><span class="endpoint-method"><span class="badge badge-delete">DELETE</span></span><span class="endpoint-path">/maps/{id}</span><span class="endpoint-desc">Soft delete (ADMIN)</span></div>
-  <div class="endpoint-row"><span class="endpoint-method"><span class="badge badge-get">GET</span></span><span class="endpoint-path">/maps/{id}/open</span><span class="endpoint-desc">Full group+layer tree + effective role per layer. Supports ETag / If-None-Match → 304. Response cached in Redis maptree:{id}.</span></div>
-  <div class="endpoint-row"><span class="endpoint-method"><span class="badge badge-get">GET</span></span><span class="endpoint-path">/maps/{id}/freshness?since=</span><span class="endpoint-desc">Which layers changed since timestamp; content_version; who changed what. 30s Redis cache.</span></div>
+  <div class="endpoint-row"><span class="endpoint-method"><span class="badge badge-get">GET</span></span><span class="endpoint-path">/maps?database_id=</span><span class="endpoint-desc">List maps for a database (excludes soft-deleted). Each row includes <code>extent</code> (read separately via ST_X/Y queries). (read)</span></div>
+  <div class="endpoint-row"><span class="endpoint-method"><span class="badge badge-post">POST</span></span><span class="endpoint-path">/maps</span><span class="endpoint-desc">Create map {name, description?, database_id} → creator stamped on <code>created_by</code>/<code>updated_by</code>/<code>content_updated_by</code></span></div>
+  <div class="endpoint-row"><span class="endpoint-method"><span class="badge badge-get">GET</span></span><span class="endpoint-path">/maps/{id}</span><span class="endpoint-desc">Get map metadata (read)</span></div>
+  <div class="endpoint-row"><span class="endpoint-method"><span class="badge badge-put">PUT</span></span><span class="endpoint-path">/maps/{id}</span><span class="endpoint-desc">Update name/description → records a version row when whitelisted fields change, in the same transaction (write)</span></div>
+  <div class="endpoint-row"><span class="endpoint-method"><span class="badge badge-delete">DELETE</span></span><span class="endpoint-path">/maps/{id}</span><span class="endpoint-desc">Soft delete (delete)</span></div>
+  <div class="endpoint-row"><span class="endpoint-method"><span class="badge badge-get">GET</span></span><span class="endpoint-path">/maps/{id}/open</span><span class="endpoint-desc">Full group+layer tree assembled from <code>get_map_layer_tree()</code>. ETag = <code>"{map_id}-{content_version}-{max_features_ts}"</code>; <code>If-None-Match</code> match → 304. Flat row list cached in Redis <code>maptree:{id}</code> 30s.</span></div>
+  <div class="endpoint-row"><span class="endpoint-method"><span class="badge badge-get">GET</span></span><span class="endpoint-path">/maps/{id}/freshness?since=&lt;ISO&gt;</span><span class="endpoint-desc">Which layers had feature changes since timestamp; content_version. 30s Redis cache (<code>mapfresh:{id}:{since}</code>).</span></div>
 </div>
 
 <h3 id="api-map-groups">Map Groups &amp; Layers Inside Maps</h3>
 <div class="card">
-  <div class="endpoint-row"><span class="endpoint-method"><span class="badge badge-post">POST</span></span><span class="endpoint-path">/maps/{id}/groups</span><span class="endpoint-desc">{name, parent_id?, sort_order?, embedded_map_id?} — create group or embed a map (EDITOR+)</span></div>
-  <div class="endpoint-row"><span class="endpoint-method"><span class="badge badge-put">PUT</span></span><span class="endpoint-path">/maps/{id}/groups/{gid}</span><span class="endpoint-desc">Rename / reparent / reorder group (EDITOR+)</span></div>
-  <div class="endpoint-row"><span class="endpoint-method"><span class="badge badge-delete">DELETE</span></span><span class="endpoint-path">/maps/{id}/groups/{gid}</span><span class="endpoint-desc">Delete group; layers float to root of map (EDITOR+)</span></div>
-  <div class="endpoint-row"><span class="endpoint-method"><span class="badge badge-post">POST</span></span><span class="endpoint-path">/maps/{id}/layers</span><span class="endpoint-desc">{layer_id, group_id?, sort_order?, filter_expression?} — add layer to map (EDITOR+)</span></div>
-  <div class="endpoint-row"><span class="endpoint-method"><span class="badge badge-put">PUT</span></span><span class="endpoint-path">/maps/{id}/layers/{layer_id}</span><span class="endpoint-desc">Update visibility, sort_order, group_id, filter_expression (EDITOR+)</span></div>
-  <div class="endpoint-row"><span class="endpoint-method"><span class="badge badge-delete">DELETE</span></span><span class="endpoint-path">/maps/{id}/layers/{layer_id}</span><span class="endpoint-desc">Remove layer from map (EDITOR+)</span></div>
-  <div class="endpoint-row"><span class="endpoint-method"><span class="badge badge-post">POST</span></span><span class="endpoint-path">/maps/{id}/groups/{gid}/permissions</span><span class="endpoint-desc">Bulk-grant: expands group recursively → creates resource_permission rows for each layer. Body: {who_user_id|who_group_id, role_level}. Response: {granted: N, layer_ids: [...]}. (MANAGER+)</span></div>
+  <div class="endpoint-row"><span class="endpoint-method"><span class="badge badge-get">GET</span></span><span class="endpoint-path">/maps/{id}/groups</span><span class="endpoint-desc">List map_groups for a map (flat) (read)</span></div>
+  <div class="endpoint-row"><span class="endpoint-method"><span class="badge badge-post">POST</span></span><span class="endpoint-path">/maps/{id}/groups</span><span class="endpoint-desc">{name, parent_id?, sort_order?, embedded_map_id?} — create group or embed a map. <code>_check_embed_cycle()</code> rejects cycles up to depth 5. (write)</span></div>
+  <div class="endpoint-row"><span class="endpoint-method"><span class="badge badge-put">PUT</span></span><span class="endpoint-path">/maps/{id}/groups/{gid}</span><span class="endpoint-desc">Rename / reparent / reorder / collapse (write)</span></div>
+  <div class="endpoint-row"><span class="endpoint-method"><span class="badge badge-delete">DELETE</span></span><span class="endpoint-path">/maps/{id}/groups/{gid}</span><span class="endpoint-desc">Delete group; layers move to root via ON DELETE SET NULL (write)</span></div>
+  <div class="endpoint-row"><span class="endpoint-method"><span class="badge badge-post">POST</span></span><span class="endpoint-path">/maps/{id}/layers</span><span class="endpoint-desc">{layer_id, group_id?, sort_order?, filter_expression?} — add layer to map. Bumps <code>content_version</code>; populates Redis <code>layermaps:{layer_id}</code> set. (write)</span></div>
+  <div class="endpoint-row"><span class="endpoint-method"><span class="badge badge-put">PUT</span></span><span class="endpoint-path">/maps/{id}/layers/{layer_id}</span><span class="endpoint-desc">Update visibility, sort_order, group_id, filter_expression (write)</span></div>
+  <div class="endpoint-row"><span class="endpoint-method"><span class="badge badge-delete">DELETE</span></span><span class="endpoint-path">/maps/{id}/layers/{layer_id}</span><span class="endpoint-desc">Remove layer from map (write). Updates Redis layermaps set.</span></div>
+  <div class="endpoint-row"><span class="endpoint-method"><span class="badge badge-post">POST</span></span><span class="endpoint-path">/maps/{id}/groups/{gid}/permissions</span><span class="endpoint-desc">Bulk-grant: <code>expand_group_layers()</code> recursively collects layer_ids in the group + sub-groups → inserts one <code>permissions</code> row per layer. Body: <code>{ms_user_id?, ms_group_id?, role_id, allow?}</code>. Response: <code>{granted: N, layer_ids: [...]}</code>. (manage_perms)</span></div>
 </div>
 
 <h3 id="api-features">Features (inside layers)</h3>
 <div class="card">
-  <div class="endpoint-row"><span class="endpoint-method"><span class="badge badge-get">GET</span></span><span class="endpoint-path">/layers/{id}/features</span><span class="endpoint-desc">List features. Full query params below.</span></div>
-  <div class="endpoint-row"><span class="endpoint-method"><span class="badge badge-post">POST</span></span><span class="endpoint-path">/layers/{id}/features</span><span class="endpoint-desc">Create feature {geom, properties} (EDITOR+)</span></div>
-  <div class="endpoint-row"><span class="endpoint-method"><span class="badge badge-get">GET</span></span><span class="endpoint-path">/layers/{id}/features/{fid}</span><span class="endpoint-desc">Get single feature (VIEWER+)</span></div>
-  <div class="endpoint-row"><span class="endpoint-method"><span class="badge badge-put">PUT</span></span><span class="endpoint-path">/layers/{id}/features/{fid}</span><span class="endpoint-desc">Update {geom?, properties?, version} — optimistic lock (EDITOR+)</span></div>
-  <div class="endpoint-row"><span class="endpoint-method"><span class="badge badge-delete">DELETE</span></span><span class="endpoint-path">/layers/{id}/features/{fid}</span><span class="endpoint-desc">Soft delete (EDITOR+)</span></div>
-  <div class="endpoint-row"><span class="endpoint-method"><span class="badge badge-post">POST</span></span><span class="endpoint-path">/layers/{id}/features/bulk-delete</span><span class="endpoint-desc">Delete multiple features by ID list (EDITOR+)</span></div>
+  <div class="endpoint-row"><span class="endpoint-method"><span class="badge badge-get">GET</span></span><span class="endpoint-path">/layers/{id}/features</span><span class="endpoint-desc">List features (read). Full query params below.</span></div>
+  <div class="endpoint-row"><span class="endpoint-method"><span class="badge badge-post">POST</span></span><span class="endpoint-path">/layers/{id}/features</span><span class="endpoint-desc">Create feature {geom, properties} (write)</span></div>
+  <div class="endpoint-row"><span class="endpoint-method"><span class="badge badge-get">GET</span></span><span class="endpoint-path">/layers/{id}/features/{fid}</span><span class="endpoint-desc">Get single feature (read)</span></div>
+  <div class="endpoint-row"><span class="endpoint-method"><span class="badge badge-put">PUT</span></span><span class="endpoint-path">/layers/{id}/features/{fid}</span><span class="endpoint-desc">Update {geom?, properties?, version} — optimistic lock; 0 rows updated → 409 + SyncConflict row (write)</span></div>
+  <div class="endpoint-row"><span class="endpoint-method"><span class="badge badge-delete">DELETE</span></span><span class="endpoint-path">/layers/{id}/features/{fid}</span><span class="endpoint-desc">Soft delete (delete)</span></div>
+  <div class="endpoint-row"><span class="endpoint-method"><span class="badge badge-post">POST</span></span><span class="endpoint-path">/layers/{id}/features/bulk-delete</span><span class="endpoint-desc">Delete multiple features by ID list (delete)</span></div>
 </div>
+<p>Every mutation runs <code>_invalidate_after_mutation()</code>: <code>refresh_layer_feature_stamp()</code> (always) + <code>cache_delete(stats:{layer_id})</code> + <code>asyncio.create_task(refresh_map_content_for_layer(...))</code> (fire-and-forget). Geometry-changing mutations also run <code>refresh_layer_geometry_types()</code> + <code>refresh_layer_bbox()</code>.</p>
 
 <h4>Feature List Query Params (<code>GET /layers/{id}/features</code>)</h4>
 <table>
@@ -827,26 +851,27 @@
 
 <h3 id="api-layers">Layers (metadata &amp; schema)</h3>
 <div class="card">
-  <div class="endpoint-row"><span class="endpoint-method"><span class="badge badge-get">GET</span></span><span class="endpoint-path">/layers?database_id=</span><span class="endpoint-desc">List layers visible to user</span></div>
-  <div class="endpoint-row"><span class="endpoint-method"><span class="badge badge-post">POST</span></span><span class="endpoint-path">/layers</span><span class="endpoint-desc">Create layer (EDITOR+ on database)</span></div>
-  <div class="endpoint-row"><span class="endpoint-method"><span class="badge badge-get">GET</span></span><span class="endpoint-path">/layers/{id}</span><span class="endpoint-desc">Get layer metadata including bbox as [lon_min,lat_min,lon_max,lat_max]</span></div>
-  <div class="endpoint-row"><span class="endpoint-method"><span class="badge badge-put">PUT</span></span><span class="endpoint-path">/layers/{id}</span><span class="endpoint-desc">Update metadata → records version snapshot (EDITOR+)</span></div>
-  <div class="endpoint-row"><span class="endpoint-method"><span class="badge badge-delete">DELETE</span></span><span class="endpoint-path">/layers/{id}</span><span class="endpoint-desc">Soft delete (MANAGER+)</span></div>
-  <div class="endpoint-row"><span class="endpoint-method"><span class="badge badge-get">GET</span></span><span class="endpoint-path">/layers/{id}/schema</span><span class="endpoint-desc">Get json_schema field definitions</span></div>
-  <div class="endpoint-row"><span class="endpoint-method"><span class="badge badge-put">PUT</span></span><span class="endpoint-path">/layers/{id}/schema</span><span class="endpoint-desc">Update field definitions (MANAGER+)</span></div>
-  <div class="endpoint-row"><span class="endpoint-method"><span class="badge badge-post">POST</span></span><span class="endpoint-path">/layers/{id}/lock</span><span class="endpoint-desc">{reason} — lock layer (MANAGER+)</span></div>
-  <div class="endpoint-row"><span class="endpoint-method"><span class="badge badge-delete">DELETE</span></span><span class="endpoint-path">/layers/{id}/lock</span><span class="endpoint-desc">Unlock layer (MANAGER+)</span></div>
+  <div class="endpoint-row"><span class="endpoint-method"><span class="badge badge-get">GET</span></span><span class="endpoint-path">/layers?database_id=&amp;group_layer_id=</span><span class="endpoint-desc">List layers (filterable by database or layer-folder). bbox surfaces as [lon_min,lat_min,lon_max,lat_max] via a Pydantic <code>field_validator</code> that coerces the raw geoalchemy2 WKBElement to None (live values come from a separate ST_X/Y query when needed).</span></div>
+  <div class="endpoint-row"><span class="endpoint-method"><span class="badge badge-post">POST</span></span><span class="endpoint-path">/layers</span><span class="endpoint-desc">Create layer; creator gets a primary <code>layer_owners</code> row.</span></div>
+  <div class="endpoint-row"><span class="endpoint-method"><span class="badge badge-get">GET</span></span><span class="endpoint-path">/layers/{id}</span><span class="endpoint-desc">Get layer metadata (read)</span></div>
+  <div class="endpoint-row"><span class="endpoint-method"><span class="badge badge-put">PUT</span></span><span class="endpoint-path">/layers/{id}</span><span class="endpoint-desc">Update metadata → records a version row when whitelisted fields change, in the same transaction (write)</span></div>
+  <div class="endpoint-row"><span class="endpoint-method"><span class="badge badge-delete">DELETE</span></span><span class="endpoint-path">/layers/{id}</span><span class="endpoint-desc">Soft delete (delete)</span></div>
+  <div class="endpoint-row"><span class="endpoint-method"><span class="badge badge-get">GET</span></span><span class="endpoint-path">/layers/{id}/schema</span><span class="endpoint-desc">Get json_schema field definitions (read)</span></div>
+  <div class="endpoint-row"><span class="endpoint-method"><span class="badge badge-put">PUT</span></span><span class="endpoint-path">/layers/{id}/schema</span><span class="endpoint-desc">Update field definitions; bumps <code>schema_version</code> (write)</span></div>
+  <div class="endpoint-row"><span class="endpoint-method"><span class="badge badge-post">POST</span></span><span class="endpoint-path">/layers/{id}/lock</span><span class="endpoint-desc">{reason?} — lock layer (write)</span></div>
+  <div class="endpoint-row"><span class="endpoint-method"><span class="badge badge-delete">DELETE</span></span><span class="endpoint-path">/layers/{id}/lock</span><span class="endpoint-desc">Unlock — only the locker or a superadmin</span></div>
+  <div class="endpoint-row"><span class="endpoint-method"><span class="badge badge-post">POST</span></span><span class="endpoint-path">/layers/{id}/lyrx</span><span class="endpoint-desc">Upload an ArcGIS .lyrx file → MinIO; key stored on the row (manage_style)</span></div>
 </div>
 
 <h3 id="api-export">Export</h3>
 <div class="card">
-  <div class="endpoint-row"><span class="endpoint-method"><span class="badge badge-get">GET</span></span><span class="endpoint-path">/layers/{id}/export?format=geojson|shapefile|gpkg&amp;srid=</span><span class="endpoint-desc">Download all features. Returns StreamingResponse (GeoJSON) or binary (SHP zip / GPKG). Content-Disposition: attachment. (VIEWER+ with can_export)</span></div>
+  <div class="endpoint-row"><span class="endpoint-method"><span class="badge badge-get">GET</span></span><span class="endpoint-path">/layers/{id}/export?format=geojson|shapefile|gpkg&amp;srid=</span><span class="endpoint-desc">Download all features. Returns Response with Content-Disposition: attachment. Default srid=4326. SRID validated against <code>app.state.valid_srids</code>. (export)</span></div>
 </div>
-<p>Format details: GeoJSON uses Python streaming. Shapefile uses <code>pyshp</code> (pure Python, zip of .shp/.dbf/.prj/.shx). GeoPackage uses <code>fiona</code> with GPKG driver. Both sync libs run via <code>asyncio.to_thread()</code>.</p>
+<p>Format details: GeoJSON builds a FeatureCollection with <code>crs.name = urn:ogc:def:crs:EPSG::{srid}</code>. Shapefile uses <code>pyshp</code> (pure Python, zip of .shp/.dbf/.prj/.shx) — field names truncated to 10 chars with dedup; geometry parsed via <code>shapely</code> from <code>ST_AsBinary(ST_Transform(geom,:srid))</code>. GeoPackage uses <code>fiona</code> with GPKG driver. Both sync libs run via <code>asyncio.to_thread()</code>.</p>
 
 <h3 id="api-stats">Attribute Statistics</h3>
 <div class="card">
-  <div class="endpoint-row"><span class="endpoint-method"><span class="badge badge-get">GET</span></span><span class="endpoint-path">/layers/{id}/stats</span><span class="endpoint-desc">Feature count, geometry type breakdown, bbox, per-field stats. Cached in Redis 60s. (VIEWER+)</span></div>
+  <div class="endpoint-row"><span class="endpoint-method"><span class="badge badge-get">GET</span></span><span class="endpoint-path">/layers/{id}/stats</span><span class="endpoint-desc">Feature count, geometry type breakdown, bbox, per-field stats. Cached 60s under <code>stats:{layer_id}</code>. (read)</span></div>
 </div>
 <pre><code>{
   <span class="str">"layer_id"</span>: <span class="str">"..."</span>,
@@ -862,26 +887,26 @@
 
 <h3 id="api-versions">Version History</h3>
 <div class="card">
-  <div class="endpoint-row"><span class="endpoint-method"><span class="badge badge-get">GET</span></span><span class="endpoint-path">/layers/{id}/versions?limit=50&amp;offset=0</span><span class="endpoint-desc">List versions DESC. Each item: {version, changed_fields, changed_by.name, changed_at, message}.</span></div>
-  <div class="endpoint-row"><span class="endpoint-method"><span class="badge badge-get">GET</span></span><span class="endpoint-path">/layers/{id}/versions/{v}</span><span class="endpoint-desc">Get full snapshot at version v</span></div>
-  <div class="endpoint-row"><span class="endpoint-method"><span class="badge badge-post">POST</span></span><span class="endpoint-path">/layers/{id}/versions/{v}/restore</span><span class="endpoint-desc">Restore layer metadata to snapshot; records new version with message "Restored from v{v}" (EDITOR+)</span></div>
+  <div class="endpoint-row"><span class="endpoint-method"><span class="badge badge-get">GET</span></span><span class="endpoint-path">/layers/{id}/versions?limit=50&amp;offset=0</span><span class="endpoint-desc">List versions DESC. Each item: {id, version, changed_fields, changed_by, changed_at, message}. (read)</span></div>
+  <div class="endpoint-row"><span class="endpoint-method"><span class="badge badge-get">GET</span></span><span class="endpoint-path">/layers/{id}/versions/{v}</span><span class="endpoint-desc">Get full snapshot at version v (read)</span></div>
+  <div class="endpoint-row"><span class="endpoint-method"><span class="badge badge-post">POST</span></span><span class="endpoint-path">/layers/{id}/versions/{v}/restore</span><span class="endpoint-desc">Capture pre-restore snapshot, apply <code>LAYER_VERSION_FIELDS</code> from snapshot v, record a new version with message "Restored from v{v}". (write)</span></div>
   <div class="endpoint-row"><span class="endpoint-method"><span class="badge badge-get">GET</span></span><span class="endpoint-path">/maps/{id}/versions?limit=50</span><span class="endpoint-desc">Same pattern for maps</span></div>
   <div class="endpoint-row"><span class="endpoint-method"><span class="badge badge-get">GET</span></span><span class="endpoint-path">/maps/{id}/versions/{v}</span><span class="endpoint-desc">Map snapshot at version v</span></div>
-  <div class="endpoint-row"><span class="endpoint-method"><span class="badge badge-post">POST</span></span><span class="endpoint-path">/maps/{id}/versions/{v}/restore</span><span class="endpoint-desc">Restore map metadata (MANAGER+)</span></div>
+  <div class="endpoint-row"><span class="endpoint-method"><span class="badge badge-post">POST</span></span><span class="endpoint-path">/maps/{id}/versions/{v}/restore</span><span class="endpoint-desc">Restore map metadata; busts Redis <code>maptree:{id}</code>. (write)</span></div>
 </div>
 
 <h3 id="api-expressions">Saved Expressions</h3>
 <div class="card">
-  <div class="endpoint-row"><span class="endpoint-method"><span class="badge badge-post">POST</span></span><span class="endpoint-path">/layers/{id}/expressions</span><span class="endpoint-desc">{name, description?, expression} — validates DSL before saving (EDITOR+)</span></div>
-  <div class="endpoint-row"><span class="endpoint-method"><span class="badge badge-get">GET</span></span><span class="endpoint-path">/layers/{id}/expressions</span><span class="endpoint-desc">List expressions for layer (VIEWER+)</span></div>
-  <div class="endpoint-row"><span class="endpoint-method"><span class="badge badge-get">GET</span></span><span class="endpoint-path">/layers/{id}/expressions/{eid}</span><span class="endpoint-desc">Get full expression JSON (VIEWER+)</span></div>
-  <div class="endpoint-row"><span class="endpoint-method"><span class="badge badge-put">PUT</span></span><span class="endpoint-path">/layers/{id}/expressions/{eid}</span><span class="endpoint-desc">Update expression (validates DSL; invalidates Redis cache) (EDITOR+)</span></div>
-  <div class="endpoint-row"><span class="endpoint-method"><span class="badge badge-delete">DELETE</span></span><span class="endpoint-path">/layers/{id}/expressions/{eid}</span><span class="endpoint-desc">Delete expression (EDITOR+)</span></div>
+  <div class="endpoint-row"><span class="endpoint-method"><span class="badge badge-post">POST</span></span><span class="endpoint-path">/layers/{id}/expressions</span><span class="endpoint-desc">{name, description?, expression} — validates DSL via <code>compile_expression()</code> before saving (write)</span></div>
+  <div class="endpoint-row"><span class="endpoint-method"><span class="badge badge-get">GET</span></span><span class="endpoint-path">/layers/{id}/expressions</span><span class="endpoint-desc">List expressions for layer (read)</span></div>
+  <div class="endpoint-row"><span class="endpoint-method"><span class="badge badge-get">GET</span></span><span class="endpoint-path">/layers/{id}/expressions/{eid}</span><span class="endpoint-desc">Get full expression JSON (read)</span></div>
+  <div class="endpoint-row"><span class="endpoint-method"><span class="badge badge-put">PUT</span></span><span class="endpoint-path">/layers/{id}/expressions/{eid}</span><span class="endpoint-desc">Update; re-validates DSL; busts Redis <code>expr:{eid}</code> (write)</span></div>
+  <div class="endpoint-row"><span class="endpoint-method"><span class="badge badge-delete">DELETE</span></span><span class="endpoint-path">/layers/{id}/expressions/{eid}</span><span class="endpoint-desc">Delete; busts Redis <code>expr:{eid}</code> (write)</span></div>
 </div>
 
 <h3 id="api-identify">Identify Layers by Polygon</h3>
 <div class="card">
-  <div class="endpoint-row"><span class="endpoint-method"><span class="badge badge-post">POST</span></span><span class="endpoint-path">/layers/identify</span><span class="endpoint-desc">Draw a polygon → returns ALL accessible layers with feature counts inside the polygon. User selects which layers to load. (VIEWER+)</span></div>
+  <div class="endpoint-row"><span class="endpoint-method"><span class="badge badge-post">POST</span></span><span class="endpoint-path">/layers/identify</span><span class="endpoint-desc">Draw a polygon → returns ALL readable layers in the database with feature counts inside the polygon (count=0 layers still appear). User selects which layers to load. (read per layer; layers the user can't read are entirely absent)</span></div>
 </div>
 <div class="callout callout-warn">
   <strong>Route ordering critical:</strong> This endpoint MUST be registered BEFORE <code>/{layer_id}</code> routes in the router. FastAPI matches routes in order — "identify" would otherwise be parsed as a UUID path parameter and return 422.
@@ -908,9 +933,11 @@
 
 <h3 id="api-permissions">Permissions</h3>
 <div class="card">
-  <div class="endpoint-row"><span class="endpoint-method"><span class="badge badge-post">POST</span></span><span class="endpoint-path">/permissions</span><span class="endpoint-desc">{who_user_id|who_group_id, resource_type, resource_id, role_level} — grant (MANAGER+)</span></div>
-  <div class="endpoint-row"><span class="endpoint-method"><span class="badge badge-get">GET</span></span><span class="endpoint-path">/permissions?resource_type=&amp;resource_id=</span><span class="endpoint-desc">List all grants for a resource (MANAGER+)</span></div>
-  <div class="endpoint-row"><span class="endpoint-method"><span class="badge badge-delete">DELETE</span></span><span class="endpoint-path">/permissions/{id}</span><span class="endpoint-desc">Revoke a specific permission row (MANAGER+). Invalidates Redis group cache for affected user.</span></div>
+  <div class="endpoint-row"><span class="endpoint-method"><span class="badge badge-post">POST</span></span><span class="endpoint-path">/permissions</span><span class="endpoint-desc">Grant a role at a scope. Body: <code>{ms_user_id?, ms_group_id?, database_id?, group_layer_id?, layer_id?, role_id, allow?}</code> — exactly one scope and exactly one subject. (manage_perms)</span></div>
+  <div class="endpoint-row"><span class="endpoint-method"><span class="badge badge-get">GET</span></span><span class="endpoint-path">/permissions?layer_id=&amp;group_layer_id=&amp;database_id=</span><span class="endpoint-desc">List grants for a scope. (manage_perms)</span></div>
+  <div class="endpoint-row"><span class="endpoint-method"><span class="badge badge-delete">DELETE</span></span><span class="endpoint-path">/permissions/{id}</span><span class="endpoint-desc">Revoke a specific permission row. (manage_perms)</span></div>
+  <div class="endpoint-row"><span class="endpoint-method"><span class="badge badge-get">GET</span></span><span class="endpoint-path">/roles</span><span class="endpoint-desc">List all roles + the seven flag values per role.</span></div>
+  <div class="endpoint-row"><span class="endpoint-method"><span class="badge badge-post">POST</span></span><span class="endpoint-path">/roles</span><span class="endpoint-desc">Create a custom role with any combination of flags (superadmin)</span></div>
 </div>
 
 <h3 id="api-users">Users &amp; Groups</h3>
@@ -1114,40 +1141,48 @@
 </div>
 
 <h3 id="impl-order">Step-by-Step Implementation Order</h3>
-<p>Steps with no dependencies can be done in parallel; steps that reference earlier steps must wait. <strong style="color:var(--green)">✓ = already committed.</strong></p>
+<p><strong style="color:var(--green)">All 31 steps are committed on <code>develop</code>.</strong> See <code>geo-platform/next_session/01_done.md</code> for the per-phase commit log (each phase committed as <code>phase NN: …</code>).</p>
 
 <div class="card">
   <div class="step-row"><span class="step-num" style="background:var(--green)">1</span><div class="step-content"><strong style="color:var(--green)">✓ Migration 007</strong> — maps, map_groups (+ embedded_map_id), map_layers (+ filter_expression), get_map_layer_tree() SQL function, all indexes</div></div>
   <div class="step-row"><span class="step-num" style="background:var(--green)">2</span><div class="step-content"><strong style="color:var(--green)">✓ Migration 008</strong> — resource_type ENUM, resource_versions table, next_resource_version() SQL function</div></div>
   <div class="step-row"><span class="step-num" style="background:var(--green)">3</span><div class="step-content"><strong style="color:var(--green)">✓ Migration 009</strong> — features_updated_at, features_updated_by, updated_by columns on layers + index</div></div>
   <div class="step-row"><span class="step-num" style="background:var(--green)">4</span><div class="step-content"><strong style="color:var(--green)">✓ Migration 010</strong> — saved_expressions table</div></div>
-  <div class="step-row"><span class="step-num" style="background:var(--green)">5</span><div class="step-content"><strong style="color:var(--green)">✓ Migration 002f</strong> (features branch) — per-partition stats indexes DO block</div></div>
-  <div class="step-row"><span class="step-num" style="background:var(--green)">6</span><div class="step-content"><strong style="color:var(--green)">✓ requirements.txt</strong> — add pyshp, fiona, redis[asyncio]</div></div>
+  <div class="step-row"><span class="step-num" style="background:var(--green)">5</span><div class="step-content"><strong style="color:var(--green)">✓ Migration 002f</strong> (features branch) — per-partition stats indexes</div></div>
+  <div class="step-row"><span class="step-num" style="background:var(--green)">6</span><div class="step-content"><strong style="color:var(--green)">✓ requirements.txt</strong> — pyshp 2.3.1, shapely 2.0.6 (added during smoke-test for WKB→geom in shapefile export), fiona <strong>1.10.1</strong> (1.9.6 had no Windows wheel for Python 3.13), redis[asyncio] 5.0.4</div></div>
   <div class="step-row"><span class="step-num" style="background:var(--green)">7</span><div class="step-content"><strong style="color:var(--green)">✓ cache.py</strong> — Redis client module (get_redis, cache_get, cache_set, cache_delete, cache_sadd, cache_smembers)</div></div>
-  <div class="step-row"><span class="step-num" style="background:var(--green)">8</span><div class="step-content"><strong style="color:var(--green)">✓ auth/local.py</strong> — wire cache into _resolve_custom_group_ids() (5-min TTL) and validate_token() last_seen debounce (60s sentinel)</div></div>
-  <div class="step-row"><span class="step-num" style="background:var(--green)">9</span><div class="step-content"><strong style="color:var(--green)">✓ layer_geometry.py + features.py bug fix</strong> — add refresh_layer_bbox() and refresh_layer_feature_stamp(). Bug fix: call refresh_layer_feature_stamp() unconditionally (not just on geom changes); call refresh_layer_bbox() at all 4 mutation sites</div></div>
-  <div class="step-row"><span class="step-num" style="background:var(--green)">10</span><div class="step-content"><strong style="color:var(--green)">✓ schemas/layers.py</strong> — add bbox, features_updated_at, features_updated_by, updated_by to LayerResponse; add identify/version/expression schemas</div></div>
+  <div class="step-row"><span class="step-num" style="background:var(--green)">8</span><div class="step-content"><strong style="color:var(--green)">✓ auth/local.py</strong> — Redis cache on _resolve_custom_group_ids() (5-min TTL) and validate_token() last_seen debounce (60s sentinel)</div></div>
+  <div class="step-row"><span class="step-num" style="background:var(--green)">9</span><div class="step-content"><strong style="color:var(--green)">✓ layer_geometry.py + features.py bug fix</strong> — refresh_layer_bbox() (always writes a Polygon via ST_MakeEnvelope with 1e-9 epsilon for degenerate envelopes — fixed during smoke-test), refresh_layer_feature_stamp() called unconditionally on every mutation</div></div>
+  <div class="step-row"><span class="step-num" style="background:var(--green)">10</span><div class="step-content"><strong style="color:var(--green)">✓ schemas/layers.py</strong> — bbox/features_updated_at/features_updated_by/updated_by on LayerResponse (with field_validator coercing geoalchemy2 WKBElement to None); identify/version/expression schemas</div></div>
   <div class="step-row"><span class="step-num" style="background:var(--green)">11</span><div class="step-content"><strong style="color:var(--green)">✓ feature_filter.py</strong> — compile_expression() DSL (injection-safe, recursive, depth-limited, allowlist ops)</div></div>
-  <div class="step-row"><span class="step-num">12</span><div class="step-content"><strong>features.py</strong> — add zoom, srid, spatial_op, filter_geojson, filter_distance_m, expression_id, expression params to list_features()</div></div>
-  <div class="step-row"><span class="step-num" style="background:var(--green)">13</span><div class="step-content"><strong style="color:var(--green)">✓ models/maps.py + models/versions.py + models/expressions.py</strong> — SQLAlchemy ORM models for all new tables</div></div>
-  <div class="step-row"><span class="step-num">14</span><div class="step-content"><strong>schemas/maps.py</strong> — MapCreate, MapUpdate, MapResponse, MapGroupCreate/Update/Response, MapLayerAdd/Update/Response, MapOpenResponse, MapFreshnessResponse, GroupPermissionGrantRequest/Response</div></div>
-  <div class="step-row"><span class="step-num">15</span><div class="step-content"><strong>services/map_service.py</strong> — full map CRUD + get_map_layer_tree() + embedded map resolution + cycle check + refresh_map_content_for_layer() + layermaps:{layer_id} Redis set + get_map_freshness()</div></div>
-  <div class="step-row"><span class="step-num">16</span><div class="step-content"><strong>services/version_service.py</strong> — record_version(), get_versions(), get_version_snapshot(), restore_version()</div></div>
-  <div class="step-row"><span class="step-num">17</span><div class="step-content"><strong>routers/maps.py + main.py</strong> — all map endpoints, ETag on /open, Redis cache on /freshness, include_router. Also: wire asyncio.create_task(refresh_map_content_for_layer()) in features.py after feature mutations.</div></div>
-  <div class="step-row"><span class="step-num">18</span><div class="step-content"><strong>routers/layers.py</strong> — version endpoints + record_version() in update_layer() (same transaction). Also: expression CRUD endpoints. Invalidate expr:{eid} on update/delete.</div></div>
-  <div class="step-row"><span class="step-num">19</span><div class="step-content"><strong>services/export_service.py</strong> — geojson/shapefile/gpkg exports. Shapefile + GPKG via asyncio.to_thread().</div></div>
-  <div class="step-row"><span class="step-num">20</span><div class="step-content"><strong>routers/layers.py</strong> — /export endpoint with SRID validation against app.state.valid_srids</div></div>
-  <div class="step-row"><span class="step-num">21</span><div class="step-content"><strong>services/stats_service.py</strong> — compute_layer_stats() with Redis caching (stats:{layer_id}, 60s). Requires step 5 indexes. Add cache_delete(stats:{layer_id}) in features.py after every mutation.</div></div>
-  <div class="step-row"><span class="step-num">22</span><div class="step-content"><strong>routers/layers.py</strong> — /stats endpoint</div></div>
-  <div class="step-row"><span class="step-num">23</span><div class="step-content"><strong>main.py lifespan</strong> — load valid_srids frozenset from spatial_ref_sys into app.state.valid_srids on startup</div></div>
-  <div class="step-row"><span class="step-num">24</span><div class="step-content"><strong>Frontend: types/index.ts</strong> — add GeoMap, MapGroup, MapLayerNode, MapGroupNode, MapTreeNode, LayerStats, FieldStat, IdentifyLayerNode, IdentifyGroupNode, IdentifyTreeNode, LayerIdentifyResponse. Update Layer: add bbox, features_updated_at, features_updated_by.</div></div>
-  <div class="step-row"><span class="step-num">25</span><div class="step-content"><strong>Frontend: api/maps.ts</strong> — all map API calls, export URL builder, stats getter. Also add identify() to api/layers.ts.</div></div>
-  <div class="step-row"><span class="step-num">26</span><div class="step-content"><strong>Frontend: MapGroupTree.tsx</strong> — recursive tree component with drag-drop, freshness indicator, embedded map nodes</div></div>
-  <div class="step-row"><span class="step-num">27</span><div class="step-content"><strong>Frontend: ExpressionBuilder.tsx</strong> — nested AND/OR expression builder with save/load</div></div>
-  <div class="step-row"><span class="step-num">28</span><div class="step-content"><strong>Frontend: MapPage.tsx refactor</strong> — map selector + MapGroupTree + layer picker modal + fitBounds on open + identify mode (toolbar button, polygon draw, results tree, Load buttons)</div></div>
-  <div class="step-row"><span class="step-num">29</span><div class="step-content"><strong>Frontend: MapsPage.tsx</strong> — maps admin page at /maps-admin + sidebar nav item</div></div>
-  <div class="step-row"><span class="step-num">30</span><div class="step-content"><strong>Frontend: LayerDetailPage.tsx</strong> — export buttons, stats collapsible panel, version history tab with restore button</div></div>
-  <div class="step-row"><span class="step-num">31</span><div class="step-content"><strong>Backend: POST /layers/identify</strong> — register BEFORE /{layer_id} routes. Validates GeoJSON type, filters by permission, groups by shard, single SQL per shard (COUNT + ST_Intersects GROUP BY layer_id), assembles tree from group_layer_id hierarchy. Returns all accessible layers, count=0 for those with no features in polygon.</div></div>
+  <div class="step-row"><span class="step-num" style="background:var(--green)">12</span><div class="step-content"><strong style="color:var(--green)">✓ features.py</strong> — zoom, srid, spatial_op, filter_geojson, filter_distance_m, expression_id, expression params on list_features(); _invalidate_after_mutation() bursts stats:{layer_id} + asyncio.create_task(refresh_map_content_for_layer)</div></div>
+  <div class="step-row"><span class="step-num" style="background:var(--green)">13</span><div class="step-content"><strong style="color:var(--green)">✓ models/maps.py + models/versions.py + models/expressions.py</strong> — SQLAlchemy ORM</div></div>
+  <div class="step-row"><span class="step-num" style="background:var(--green)">14</span><div class="step-content"><strong style="color:var(--green)">✓ schemas/maps.py</strong> — MapCreate/Update/Response, MapGroupCreate/Update/Response, MapLayerAdd/Update/Response, MapLayerNode/MapGroupNode (recursive, model_rebuild()), MapOpenResponse, MapFreshnessResponse, GroupPermissionGrantRequest/Response</div></div>
+  <div class="step-row"><span class="step-num" style="background:var(--green)">15</span><div class="step-content"><strong style="color:var(--green)">✓ services/map_service.py</strong> — full map CRUD + get_map_layer_tree (Redis 30s) + assemble_tree + _check_embed_cycle (max depth 5) + add_layer_to_map (bumps content_version, sadds layermaps Redis set) + remove_layer_from_map + update_map_layer + refresh_map_extent + refresh_map_content_for_layer (fire-and-forget, opens its own MetaSessionLocal) + get_map_freshness (Redis 30s) + expand_group_layers + _invalidate_map_caches (wildcard scan_iter)</div></div>
+  <div class="step-row"><span class="step-num" style="background:var(--green)">16</span><div class="step-content"><strong style="color:var(--green)">✓ services/version_service.py</strong> — record_version (calls next_resource_version FOR UPDATE in caller's tx, no implicit commit), get_versions, get_version, restore_version</div></div>
+  <div class="step-row"><span class="step-num" style="background:var(--green)">17</span><div class="step-content"><strong style="color:var(--green)">✓ routers/maps.py + main.py</strong> — full Map/Group/Layer CRUD; /open with ETag (map_id-content_version-max_features_ts) returning 304 on If-None-Match; /freshness Redis-cached 30s; bulk group permission grant; map version endpoints. main.py: include maps router; lifespan loads app.state.valid_srids from spatial_ref_sys</div></div>
+  <div class="step-row"><span class="step-num" style="background:var(--green)">18</span><div class="step-content"><strong style="color:var(--green)">✓ routers/layers.py</strong> — POST /layers/identify (registered before /{layer_id} routes); update_layer records a version on whitelisted-field changes inside the same transaction; expression CRUD with compile_expression() validation + expr:{eid} bust; layer version endpoints (list/detail/restore). routers/groups.py also gets cache_delete(groups:{user_id}) on member changes.</div></div>
+  <div class="step-row"><span class="step-num" style="background:var(--green)">19</span><div class="step-content"><strong style="color:var(--green)">✓ services/export_service.py</strong> — export_geojson (FeatureCollection with EPSG crs.name); export_shapefile (pyshp via asyncio.to_thread, field-name truncate-to-10 with dedup, WKB parsed via shapely, .shp/.shx/.dbf/.prj zipped); export_gpkg (fiona GPKG driver via asyncio.to_thread)</div></div>
+  <div class="step-row"><span class="step-num" style="background:var(--green)">20</span><div class="step-content"><strong style="color:var(--green)">✓ routers/layers.py</strong> — GET /layers/{id}/export?format=geojson|shapefile|gpkg&srid= with SRID validation against app.state.valid_srids; Content-Disposition: attachment</div></div>
+  <div class="step-row"><span class="step-num" style="background:var(--green)">21</span><div class="step-content"><strong style="color:var(--green)">✓ services/stats_service.py</strong> — total count + ST_GeometryType breakdown + ST_Envelope bbox + per-field stats (number=min/max/avg+null; boolean=true/false/null; string=nulls+unique+top10). Per-field exception → {error} variant so a single bad field doesn't tank the response. Cached 60s.</div></div>
+  <div class="step-row"><span class="step-num" style="background:var(--green)">22</span><div class="step-content"><strong style="color:var(--green)">✓ routers/layers.py</strong> — GET /layers/{id}/stats (covered by step 21's commit)</div></div>
+  <div class="step-row"><span class="step-num" style="background:var(--green)">23</span><div class="step-content"><strong style="color:var(--green)">✓ main.py lifespan</strong> — _load_valid_srids() populates app.state.valid_srids: frozenset[int] from spatial_ref_sys (warning + empty frozenset on failure so the API still boots if PostGIS isn't ready)</div></div>
+  <div class="step-row"><span class="step-num" style="background:var(--green)">24</span><div class="step-content"><strong style="color:var(--green)">✓ Frontend: types/index.ts</strong> — GeoMap, MapGroup, MapLayerNode, MapGroupNode, MapTreeNode, MapOpenResponse, MapFreshnessChangedLayer, MapFreshnessResponse, FieldStat (discriminated + error fallback), LayerStats, IdentifyLayerNode/GroupNode/TreeNode, LayerIdentifyResponse, VersionListItem/Detail, SavedExpressionListItem/Detail. Layer extended with bbox, features_updated_at, features_updated_by.</div></div>
+  <div class="step-row"><span class="step-num" style="background:var(--green)">25</span><div class="step-content"><strong style="color:var(--green)">✓ Frontend: api/maps.ts + api/layers.ts</strong> — mapsApi (CRUD, open with If-None-Match + validateStatus 200|304, freshness, group CRUD, layer add/remove/update, bulk perm grant), layerExportUrl helper, downloadLayerExport (axios blob includes Bearer header), layerStatsApi. layers.identify, layers.versions.{list,get,restore}, layers.expressions.{list,get,create,update,delete}.</div></div>
+  <div class="step-row"><span class="step-num" style="background:var(--green)">26</span><div class="step-content"><strong style="color:var(--green)">✓ Frontend: MapGroupTree.tsx</strong> — recursive AntD Tree; geometry-colored layer icons; eye toggle; Export dropdown via downloadLayerExport (auth blob); Remove-from-map menu; group kebab (Add sub-group, Rename, Grant permissions, Delete); embedded-map purple tag; DnD reparenting for layers (group reparent intentionally not wired)</div></div>
+  <div class="step-row"><span class="step-num" style="background:var(--green)">27</span><div class="step-content"><strong style="color:var(--green)">✓ Frontend: ExpressionBuilder.tsx</strong> — nested AND/OR builder; op list adapts to field type; type-aware value inputs (Switch/InputNumber/Tags/range); Save-as posts to /layers/{id}/expressions and surfaces compile_expression() validation as toasts; Load-saved modal</div></div>
+  <div class="step-row"><span class="step-num" style="background:var(--green)">28</span><div class="step-content"><strong style="color:var(--green)">✓ Frontend: MapPage.tsx refactor</strong> — map selector below DB selector; MapGroupTree replaces flat list; auto-fitBounds on map.extent (autoFitDoneFor guard); layerRenders derived from tree's visible layers (visible-but-not-loaded fetched in batch); identify mode toggles terra-draw to polygon; on finish polygon is captured + cleared + POSTed to /layers/identify; Load buttons use ?spatial_op=intersects&filter_geojson</div></div>
+  <div class="step-row"><span class="step-num" style="background:var(--green)">29</span><div class="step-content"><strong style="color:var(--green)">✓ Frontend: MapsPage.tsx</strong> — per-database table with content_version + last content change; create/rename/delete; "Open" navigates to /map?map_id=. /maps-admin route + sidebar entry "Maps" (AppstoreOutlined)</div></div>
+  <div class="step-row"><span class="step-num" style="background:var(--green)">30</span><div class="step-content"><strong style="color:var(--green)">✓ Frontend: LayerDetailPage.tsx</strong> — top-bar Export dropdown (downloadLayerExport); fitBounds prefers layer.bbox; Map / Stats / Versions tabs (Stats + Versions lazy-loaded); StatsPanel renders total + geometry tags + per-field table inside Collapse; VersionsPanel with View + Restore (Popconfirm) and snapshot Card</div></div>
+  <div class="step-row"><span class="step-num" style="background:var(--green)">31</span><div class="step-content"><strong style="color:var(--green)">✓ Backend: POST /layers/identify</strong> — registered BEFORE /{layer_id} routes; GEOJSON_GEOMETRY_TYPES validation; one COUNT(*) GROUP BY layer_id per shard with parameterized polygon; tree built from existing group_layer_id folder hierarchy; layers the user can't read are entirely absent (covered by step 18's commit)</div></div>
+</div>
+
+<div class="callout callout-ok">
+  <strong>Smoke test (2026-04-26) — all paths verified end-to-end.</strong> Created database → map → layer → POSTed a Point feature → <code>/layers/identify</code> returned <code>feature_count_in_area=1</code> → <code>/layers/{id}/stats</code> returned correct count + bbox + geometry breakdown → <code>/layers/{id}/export?format=geojson</code> returned a valid FeatureCollection → attached layer to map → <code>/maps/{id}/open</code> showed <code>content_version</code> bumped from 0 to 1 and tree size 1.
+</div>
+
+<div class="callout callout-warn">
+  <strong>Runtime config note (not in git):</strong> <code>geo_features</code> is exposed on host port <strong>5434</strong>, not 5433 as in the older <code>.env</code> template. Update <code>FEATURES_SHARD_0_URL</code> to <code>postgresql+psycopg://geouser:geopassword@localhost:5434/geo_features</code> when setting up locally.
 </div>
 
 <h3 id="impl-verify">Verification Tests (what to check after each step)</h3>
