@@ -8,12 +8,16 @@ _client = None
 def get_client():
     global _client
     if _client is None:
-        _client = boto3.client(
-            "s3",
-            endpoint_url=settings.storage_endpoint,
-            aws_access_key_id=settings.storage_access_key,
-            aws_secret_access_key=settings.storage_secret_key,
-        )
+        kwargs = {}
+        if settings.storage_endpoint:
+            kwargs["endpoint_url"] = settings.storage_endpoint
+        # Explicit credentials take priority; if None boto3 falls back to the
+        # standard AWS credential chain (env vars, ~/.aws/credentials, IAM role).
+        if settings.storage_access_key is not None:
+            kwargs["aws_access_key_id"] = settings.storage_access_key
+        if settings.storage_secret_key is not None:
+            kwargs["aws_secret_access_key"] = settings.storage_secret_key
+        _client = boto3.client("s3", **kwargs)
     return _client
 
 

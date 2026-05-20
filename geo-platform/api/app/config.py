@@ -1,5 +1,18 @@
 from pydantic_settings import BaseSettings
-from typing import Dict
+from pydantic import model_validator
+from typing import Dict, Optional
+
+
+def _psycopg_url(url: str) -> str:
+    """Coerce a plain postgres:// or postgresql:// URL to postgresql+psycopg://.
+
+    Render (and many other cloud providers) return a standard libpq URL.
+    SQLAlchemy needs the driver qualifier so it uses psycopg3 (psycopg).
+    """
+    for prefix in ("postgres://", "postgresql://"):
+        if url.startswith(prefix):
+            return "postgresql+psycopg://" + url[len(prefix):]
+    return url
 
 
 class Settings(BaseSettings):
@@ -20,10 +33,10 @@ class Settings(BaseSettings):
     # Redis
     redis_url: str = "redis://localhost:6379/0"
 
-    # Storage
-    storage_endpoint: str
-    storage_access_key: str
-    storage_secret_key: str
+    # Storage (endpoint is optional — omit to use native AWS S3)
+    storage_endpoint: Optional[str] = None
+    storage_access_key: Optional[str] = None
+    storage_secret_key: Optional[str] = None
     storage_bucket_styles: str = "geo-styles"
     storage_bucket_rasters: str = "geo-rasters"
     storage_bucket_exports: str = "geo-exports"
@@ -32,6 +45,14 @@ class Settings(BaseSettings):
     api_secret_key: str = "dev-secret"
     api_debug: bool = False
     api_cors_origins: list[str] = ["http://localhost:5173"]
+
+    @model_validator(mode="after")
+    def _coerce_db_urls(self) -> "Settings":
+        """Convert plain postgres:// URLs (e.g. from Render) to the psycopg dialect."""
+        self.meta_db_url = _psycopg_url(self.meta_db_url)
+        self.meta_db_direct_url = _psycopg_url(self.meta_db_direct_url)
+        self.features_shard_0_url = _psycopg_url(self.features_shard_0_url)
+        return self
 
     @property
     def shard_urls(self) -> Dict[int, str]:

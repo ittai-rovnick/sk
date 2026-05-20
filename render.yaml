@@ -1,0 +1,92 @@
+# Render.com Infrastructure Blueprint
+# Docs: https://render.com/docs/blueprint-spec
+#
+# One-time setup steps AFTER first deploy:
+#   1. In the Render dashboard for geo-platform-api, set the remaining secrets:
+#        API_CORS_ORIGINS  → ["https://<your-vercel-app>.vercel.app"]
+#        STORAGE_ENDPOINT  → leave blank for AWS S3, or set to your MinIO/R2/B2 URL
+#        STORAGE_ACCESS_KEY / STORAGE_SECRET_KEY → your S3 credentials
+#        MS_TENANT_ID / MS_CLIENT_ID / MS_CLIENT_SECRET → only if using Microsoft SSO
+#
+#   2. Enable the PostGIS extension on both databases (only needed once):
+#        Dashboard → geo-meta-db  → Connect → psql → CREATE EXTENSION postgis;
+#        Dashboard → geo-features-db → Connect → psql → CREATE EXTENSION postgis;
+#      (The migrations also run CREATE EXTENSION IF NOT EXISTS postgis; on first deploy.)
+#
+#   3. Add the Render API URL to Vercel's VITE_API_URL env var.
+
+services:
+  # ── FastAPI web service ────────────────────────────────────────────────────
+  - type: web
+    name: geo-platform-api
+    runtime: docker
+    dockerfilePath: geo-platform/api/Dockerfile
+    dockerContext: geo-platform/api
+    plan: starter
+    healthCheckPath: /health
+    envVars:
+      # DB URLs — Render injects these from the managed databases below.
+      # The config.py validator converts postgres:// → postgresql+psycopg://.
+      - key: META_DB_URL
+        fromDatabase:
+          name: geo-meta-db
+          property: connectionString
+      - key: META_DB_DIRECT_URL
+        fromDatabase:
+          name: geo-meta-db
+          property: connectionString
+      - key: FEATURES_SHARD_COUNT
+        value: "1"
+      - key: FEATURES_SHARD_0_URL
+        fromDatabase:
+          name: geo-features-db
+          property: connectionString
+
+      # Redis
+      - key: REDIS_URL
+        fromService:
+          type: redis
+          name: geo-redis
+          property: connectionString
+
+      # S3 / MinIO — set manually in the Render dashboard
+      - key: STORAGE_ENDPOINT
+        sync: false   # leave blank for native AWS S3
+      - key: STORAGE_ACCESS_KEY
+        sync: false
+      - key: STORAGE_SECRET_KEY
+        sync: false
+
+      # API settings
+      - key: API_SECRET_KEY
+        generateValue: true   # Render generates a random secret on first deploy
+      - key: API_DEBUG
+        value: "false"
+      - key: API_CORS_ORIGINS
+        sync: false   # set to ["https://<app>.vercel.app"] in dashboard
+
+      # Microsoft SSO — only needed when dev_mode=false and using Entra ID auth
+      - key: MS_TENANT_ID
+        sync: false
+      - key: MS_CLIENT_ID
+        sync: false
+      - key: MS_CLIENT_SECRET
+        sync: false
+
+  # ── Redis ──────────────────────────────────────────────────────────────────
+  - type: redis
+    name: geo-redis
+    plan: starter
+    maxmemoryPolicy: allkeys-lru
+
+# ── Managed PostgreSQL databases ───────────────────────────────────────────
+databases:
+  - name: geo-meta-db
+    plan: starter
+    databaseName: geo_meta
+    user: geouser
+
+  - name: geo-features-db
+    plan: starter
+    databaseName: geo_features
+    user: geouser
